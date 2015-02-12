@@ -35,6 +35,7 @@ CLASS({
       subType: 'QBug',
       view: function() { return this.DetailView.create({model: QBug}); },
       factory: function() {
+        EasyOAuth2 = OAuth2ChromeIdentity;
         return this.QBug.create({
           authClientId: '18229540903-cojf1q6g154dk5kpim4jnck3cfdvqe3u.apps.googleusercontent.com',
           authClientSecret: 'HkwDwjSekPBL5Oybq1NsDeZj'
@@ -373,3 +374,77 @@ CLASS({
     */}
  ]
 });
+
+// CLASS({
+//   name: 'SearchTestData'
+// });
+
+// CLASS({
+//   name: 'SearchTestView',
+//   extendsModel: 'View',
+
+//   requires: [
+//     'TouchManager',
+//     'GestureManager'
+//   ],
+
+//   properties: [
+//     'data',
+//     {
+//       model_: 'BooleanProperty',
+//       defaultValue: false,
+//       name: 'searchMode'
+//     },
+//     {
+//       name: 'q',
+//       displayWidth: 25,
+//       view: {factory_: 'TextFieldView', type: 'search', onKeyMode: true, placeholder: 'Search'}
+//     },
+//     'previousQuery'
+//   ],
+
+//   actions: [
+//     {
+//       name: 'enterSearchMode',
+//       iconUrl: 'images/ic_search_24dp.png',
+//       label: '',
+//       action: function() {
+//         console.log('enterSearchMode');
+//         this.previousQuery = this.q;
+//         this.searchMode = true;
+//         var esmv = this.enterSearchModeView.$;
+//         // esmv.parentNode.removeChild(esmv);
+//         // esmv.style.display = 'none';
+//         // esmv.style.visibility = 'hidden';
+//         // esmv.style.position = 'fixed';
+//         // esmv.style.left = '0px';
+//         // esmv.style.top = '0px';
+//         this.qView.focus();
+//       }
+//     }
+//   ],
+
+//   templates: [
+//     function toHTML() {/*
+//       $$q $$enterSearchMode
+//     */}
+//   ],
+
+//   methods: {
+//     init: function() {
+//       var rtn = this.SUPER();
+//       if ( ! this.X.touchManager ) this.X.touchManager = this.TouchManager.create();
+//       if ( ! this.X.gestureManager ) this.X.gestureManager = this.GestureManager.create();
+//       return rtn;
+//     },
+//     initHTML: function() {
+//       var self = this;
+//       // this.on('click', function() {
+//       //   console.log('click');
+//       //   self.qView.focus();
+//       // }, this.enterSearchModeView.id);
+//       return this.SUPER();
+//     }
+//   }
+// });
+// debugger;
