@@ -2,7 +2,7 @@
   "packageId": "com.foamdev.apps.MBug",
   "versionCode": 375,
   "oauth2": {
-    "client_id": "18229540903-q3jf1svejrq2usts6k25p37aigsvde21.apps.googleusercontent.com",
+    "client_id": "18229540903-s63gb6hphq70c2pheihfgk2cp3cj7our.apps.googleusercontent.com",
     "scopes": [
       "https://www.googleapis.com/auth/userinfo.email",
       "https://www.googleapis.com/auth/projecthosting"
