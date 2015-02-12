@@ -35,7 +35,6 @@ CLASS({
       subType: 'QBug',
       view: function() { return this.DetailView.create({model: QBug}); },
       factory: function() {
-        EasyOAuth2 = OAuth2ChromeIdentity;
         return this.QBug.create({
           authClientId: '18229540903-cojf1q6g154dk5kpim4jnck3cfdvqe3u.apps.googleusercontent.com',
           authClientSecret: 'HkwDwjSekPBL5Oybq1NsDeZj'
