@@ -30,6 +30,17 @@
       tests[i].test();
     }
 
+    var UnitTest = X.lookup('UnitTest');
+    UnitTest.RESULTS.tableFormatter = function(val, obj, table) { return val; };
+    UnitTest.PASSED.tableFormatter  = function(val) { return (val ? '<font color=green>' : '<font color=black>' ) + val + "</font>"; };
+    UnitTest.FAILED.tableFormatter  = function(val) { return (val ? '<font color=red>' : '<font color=black>' ) + val + "</font>"; };
+    UnitTest.DESCRIPTION.tableWidth = "30%";
+    UnitTest.RESULTS.tableWidth     = "40%";
+    UnitTest.PASSED.tableWidth      = "70px";
+    UnitTest.FAILED.tableWidth      = "70px";
+    UnitTest.NAME.tableLabel        = '#';
+    UnitTest.DESCRIPTION.tableLabel = 'Input';
+
     var tView = foam.ui.TableView.create({
       model: X.UnitTest,
       dao: tests,
