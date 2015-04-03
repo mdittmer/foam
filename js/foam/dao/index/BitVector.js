@@ -105,6 +105,109 @@ CLASS({
     },
     {
       name: 'doSized_',
+      code: function(startBit, numBits, numChunkBits, opt_values) {
+        var out = opt_values || [];
+        var i;
+
+        // TODO(markdittmer): Break implementations below out so that:
+        // (1) They are readable (use ifs and running-value).
+        // (2) Split read and write into separate functions.
+        // (3) After coding up and testing hard case, implement fastpath with
+        //     fewer branches when read or write is chunk-aligned.
+
+        if ( opt_values ) {
+          // Write.
+          for ( i = 0; i < Math.ceil(numBits / numChunkBits); ++i ) {
+            // 1. On first iteration, if there are MSBs that should be kept from
+            // the current byte due to the byte-aligned startBit offset
+            // (startBit % 8), then get those bits from the view.
+            this.view['setUint' + numChunkBits](
+                Math.floor(startBit / 8) + (i * (numChunkBits / 8)),
+                (((i === 0) && (startBit % 8)) ?
+                (this.view.getUint8(Math.floor(startBit / 8)) >>>
+                (numChunkBits - (startBit % 8)) <<
+                (numChunkBits - (startBit % 8))) : 0) |
+                // Above: Clear bits by shift-then-shift-back.
+                // Below: Clear bits by masking.
+                // & (((1 << (startBit % 8)) - 1) >>>
+                // (numChunkBits - (startBit % 8)))) : 0) |
+                // 2. On the last iteration, if there are LSBs that should be
+                // kept from the current chunk due to the chunk-aligned
+                // last-bit-location (number of such bits is:
+                // numChunkBits - ((startBit + numBits) % numChunkBits)), then get those bits
+                // from the view.
+                ((((i + 1) >= Math.ceil(numBits / numChunkBits)) &&
+                ((startBit + numBits) % numChunkBits)) ?
+                (this.view['getUint' + numChunkBits](Math.floor(startBit / 8) + (i * (numChunkBits / 8))) <<
+                ((startBit + numBits) % numChunkBits) >>>
+                ((startBit + numBits) % numChunkBits)) : 0) |
+                // Above: Clear bits by shift-then-shift-back.
+                // Below: Clear bits by masking.
+                // & ((1 << ((startBit + numBits) % numChunkBits)) - 1)) : 0) |
+                // 3. Value to write (part 1): opt_values[i] shifted
+                // byte-aligned startBit offset (startBit % 8). On the last
+                // iteration, if there are LSBs that should be kept from the
+                // current chunk, then be sure to zero-out those bits in the
+                // value being written here.
+                ((((i + 1) >= Math.ceil(numBits / numChunkBits)) &&
+                ((startBit + numBits) % numChunkBits)) ?
+                (opt_values[i] >>> (startBit % 8) >>>
+                (numChunkBits - ((startBit + numBits) % numChunkBits)) <<
+                (numChunkBits - ((startBit + numBits) % numChunkBits))) :
+                // Above: Clear bits by shift-then-shift-back.
+                // Not shown: Clear bits by masking.
+                (opt_values[i] >>> (startBit % 8))) |
+                // 3. Value to write (part 2): if this isn't the first chunk
+                // and chunks aren't byte-aligned, then carry in
+                // numChunkBits - (startBit % 8) bits from previous chunk. On
+                // the last iteration, if there are LSBs that should be kept
+                // from the current chunk, then be sure to zero-out those bits
+                // in the value being written here.
+                (((i > 0) && (startBit % 8)) ?
+                ((((i + 1) >= Math.ceil(numBits / numChunkBits)) &&
+                ((startBit + numBits) % numChunkBits)) ?
+                ((opt_values[i - 1] << (numChunkBits - (startBit % 8))) >>>
+                (numChunkBits - ((startBit + numBits) % numChunkBits)) <<
+                (numChunkBits - ((startBit + numBits) % numChunkBits))) :
+                (opt_values[i - 1] << (numChunkBits - (startBit % 8)))) : 0));
+          }
+        } else {
+          // Read.
+          for ( i = 0; i < Math.ceil(numBits / numChunkBits); ++i ) {
+            // NOTE: This implementation will pad at the LSB end. E.g., read two
+            // bytes, 0xABCD into a four-byte location will yield 0xABCD0000.
+            out.push(
+                // 1. Read the current chunk, shifting off (startBit % 8) MSBs.
+                // If this is the last chunk and we are not keeping all of its
+                // bits, then be sure to drop the LSBs that are to be ignored.
+                ((((i + 1) >= Math.ceil(numBits / numChunkBits)) &&
+                ((startBit + numBits) % numChunkBits)) ?
+                ((this.view['getUint' + numChunkBits](
+                    Math.floor(startBit / 8) + (i * (numChunkBits / 8))) << (startBit % 8)) >>>
+                (numChunkBits - ((startBit + numBits) % numChunkBits)) <<
+                (numChunkBits - ((startBit + numBits) % numChunkBits))) :
+                // Above: Clear bits by shift-then-shift-back.
+                // Not shown: Clear bits by masking.
+                (this.view['getUint' + numChunkBits](
+                    Math.floor(startBit / 8) + (i * (numChunkBits / 8))) << (startBit % 8))) |
+                // 2. If there is a carry-in, then carry it in. As above, drop
+                // that don't fit into the requested range of bits.
+                (((startBit % 8) &&
+                ((Math.floor(startBit / 8) + ((i + 1) * (numChunkBits / 8))) < this.numBytes)) ?
+                ((((i + 1) >= Math.ceil(numBits / numChunkBits)) &&
+                ((startBit + numBits) % numChunkBits)) ?
+                ((this.view.getUint8(Math.floor(startBit / 8) + ((i + 1) * (numChunkBits / 8))) >>> (startBit % 8)) >>>
+                (numChunkBits - ((startBit + numBits) % numChunkBits)) <<
+                (numChunkBits - ((startBit + numBits) % numChunkBits))) :
+                // Above: Clear bits by shift-then-shift-back.
+                // Not shown: Clear bits by masking.
+                (this.view.getUint8(Math.floor(startBit / 8) + ((i + 1) * (numChunkBits / 8))) >>> (startBit % 8))) : 0));
+          }
+        }
+      }
+    },
+    {
+      name: 'doSized_old_',
       code: function(startBit, endBit, numChunkBits, opt_values) {
         startBit = startBit >= 0 ? (startBit < this.numBits ? startBit :
             this.numBits - 1) : 0;
@@ -134,11 +237,9 @@ CLASS({
             // endBit is endBitShift-th least significant bit in
             // view[endByteOffset] (byte-indexed view).
             endBitShift = (clippedEndBit + 1) % numChunkBits,
-            // TODO(markdittmer): This algorithm can probably be repurposed if
-            // getters can be injected.
             chunkGetter = this.view['getUint' + numChunkBits].bind(this.view),
             byteGetter = this.view.getUint8.bind(this.view),
-            out = [];
+            out = opt_values || [];
 
         var i, basisChunkIdx;
         if ( opt_values) {
@@ -146,8 +247,7 @@ CLASS({
           var chunkSetter = this.view['setUint' + numChunkBits].bind(this.view);
 
           for ( i = 0; i < numChunks; ++i ) {
-            basisChunkIdx = this.numBytes - startByte -
-                (numChunkBytes * (i + 1));
+            basisChunkIdx = startByte + (numChunkBytes * i);
 
             var keepMask = 0, carryMask = 0;
             if ( startBitShift ) {
@@ -169,8 +269,7 @@ CLASS({
         } else {
           // Read.
           for ( i = 0; i < numChunks; ++i ) {
-            basisChunkIdx = this.numBytes - startByte -
-                (numChunkBytes * (i + 1));
+            basisChunkIdx = startByte + (numChunkBytes * i);
 
             var basis = chunkGetter(basisChunkIdx) >>> startBitShift;
             var carryInByteIdx = startByteOffset - (numChunkBytes * (i + 1));
@@ -214,7 +313,7 @@ CLASS({
         var bv = X.lookup('foam.dao.index.BitVector').create();
         // var numsIn = [0x9ABCDEF9 | 0];
         debugger;
-        bv.writeNumbers(31, 32, [0x03 | 0]);
+        bv.writeNumbers(30, , [0x03 | 0]);
         var numsOut = bv.readNumbers(0, 63);
         this.assert(numsOut[0] === (numsIn[0] << 16));
         this.assert(numsOut[1] === (numsIn[0] >>> 16));
