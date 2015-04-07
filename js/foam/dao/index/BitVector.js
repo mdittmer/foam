@@ -114,7 +114,114 @@ CLASS({
       }
     },
     {
+      name: 'modInv',
+      code: function(num, mod) {
+        return (mod - num) % mod;
+      }
+    },
+    {
+      name: 'maskKeepLSBs',
+      code: function(numBits) {
+        if ( numBits === 32 ) return (0xFFFFFFFF | 0);
+        return (1 << numBits) - 1;
+      }
+    },
+    {
+      name: 'maskKeepMSBs',
+      code: function(numBits) {
+        if ( numBits === 32 ) return (0xFFFFFFFF | 0);
+        return this.maskKeepLSBs(numBits) << this.modInv(numBits, 32);
+      }
+    },
+    {
+      name: 'maskNotLSBs',
+      code: function(numBits) {
+        if ( numBits === 0 ) return (0xFFFFFFFF | 0);
+        return this.maskKeepMSBs(this.modInv(numBits, 32));
+      }
+    },
+    {
+      name: 'maskNotMSBs',
+      code: function(numBits) {
+        if ( numBits === 0 ) return (0xFFFFFFFF | 0);
+        return this.maskKeepLSBs(this.modInv(numBits, 32));
+      }
+    },
+    {
       name: 'write_',
+      code: function(startBit, numBits, numChunkBits, values) {
+        var startBitOffset = startBit % numChunkBits,
+            invStartBitOffset = this.modInv(startBitOffset, numChunkBits),
+            invNumChunkBits = this.modInv(numChunkBits, 32),
+            numChunkBytes = numChunkBits / 8,
+            numChunks = Math.ceil((startBitOffset + numBits) / numChunkBits),
+            startByte = Math.floor(startBit / 8);
+        for ( var i = 0; i < numChunks; ++i ) {
+          var value = 0,
+
+          // 0. Compute meta-mask to avoid overwriting bits beyond the end of
+          // the write length.
+          numOverwriteBits = ((i + 1) * numChunkBits) - startBitOffset -
+              numBits,
+          dropLSBsMask = (numOverwriteBits > 0) ?
+              this.maskNotLSBs(numOverwriteBits) : this.maskNotLSBs(0);
+
+          // 1. Carry-in and/or existing MSBs.
+          // TODO(markdittmer): This is only computed unconditionally for
+          // debugging purposes. Move it into if-statement below once all tests
+          // are passing.
+          var carryKeepMask = (startBitOffset > 0) ?
+              (this.maskNotLSBs(numChunkBits - startBitOffset, 32) &
+              this.maskNotMSBs(32  - numChunkBits, 32)) : 0,
+          maskedCarryKeepMask = carryKeepMask & dropLSBsMask;
+          if ( startBitOffset > 0 ) {
+            if ( i > 0 ) {
+              var carry = (values[i - 1] << invStartBitOffset) &
+                  maskedCarryKeepMask;
+              value |= carry;
+            } else {
+              var keep = this.getChunk_(numChunkBits, i * numChunkBytes) &
+                  maskedCarryKeepMask;
+              value |= keep;
+            }
+          }
+
+          // 2. Data to write (almost; see 3.).
+          var dataMask = this.maskNotMSBs(32 - numChunkBits + startBitOffset),
+          maskedDataMask = dataMask & dropLSBsMask;
+          value |= (values[i] >>> startBitOffset) & maskedDataMask;
+
+          // 3. Chunk part beyond intended write location. If there are bits in
+          // this chunk beyond the intended write location, write them back.
+          // TODO(markdittmer): This is only computed unconditionally for
+          // debugging purposes. Move it into if-statement below once all tests
+          // are passing.
+          var keepLSBsMask = numOverwriteBits > 0 ?
+              this.maskKeepLSBs(numOverwriteBits) : 0;
+          if ( numOverwriteBits > 0 ) {
+            var keepLSBs = this.getChunk_(numChunkBits, startByte +
+                (i * numChunkBytes)) & keepLSBsMask;
+            value |= keepLSBs;
+          }
+
+          // TODO(markdittmer): This is for debugging purposes. Remove once all
+          // tests are passing.
+          var fullMask = maskedCarryKeepMask ^ maskedDataMask ^ keepLSBsMask;
+          this.console.assert(fullMask === (((1 << numChunkBits) - 1) || (0xFFFFFFFF | 0)), 'Write masks ' +
+              'fail to account for every bit exactly once. Masks XOR\'d is ' +
+              fullMask.toString(16));
+
+          this.putChunk_(numChunkBits, startByte + (i * numChunkBytes), value);
+        }
+      }
+    },
+    {
+      name: 'read2_',
+      code: function(startBit, numBits, numChunkBits) {
+      }
+    },
+    {
+      name: 'write_old_',
       code: function(startBit, numBits, numChunkBits, values) {
         var startByte = Math.floor(startBit / 8),
             startBitOffset = startBit % 8,
