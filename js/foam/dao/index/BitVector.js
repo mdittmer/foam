@@ -484,6 +484,7 @@ CLASS({
       code: multiline(function() {/*
         var bv = X.lookup('foam.dao.index.BitVector').create();
         var numsIn = [0x9ABCDEF9 | 0];
+        debugger;
         bv.writeNumbers(16, 32, numsIn);
         var numsOut = bv.readNumbers(0, 64);
         this.assert(numsOut[0] === (numsIn[0] >>> 16), 'Number should be ' +
