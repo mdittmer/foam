@@ -150,9 +150,8 @@ CLASS({
     {
       name: 'write_',
       code: function(startBit, numBits, numChunkBits, values) {
-        var startBitOffset = startBit % numChunkBits,
+        var startBitOffset = startBit % 8,
             invStartBitOffset = this.modInv(startBitOffset, numChunkBits),
-            invNumChunkBits = this.modInv(numChunkBits, 32),
             numChunkBytes = numChunkBits / 8,
             numChunks = Math.ceil((startBitOffset + numBits) / numChunkBits),
             startByte = Math.floor(startBit / 8);
@@ -171,8 +170,8 @@ CLASS({
           // debugging purposes. Move it into if-statement below once all tests
           // are passing.
           var carryKeepMask = (startBitOffset > 0) ?
-              (this.maskNotLSBs(numChunkBits - startBitOffset, 32) &
-              this.maskNotMSBs(32  - numChunkBits, 32)) : 0,
+              (this.maskNotLSBs(numChunkBits - startBitOffset) &
+              this.maskNotMSBs(32  - numChunkBits)) : 0,
           maskedCarryKeepMask = carryKeepMask & dropLSBsMask;
           if ( startBitOffset > 0 ) {
             if ( i > 0 ) {
@@ -186,10 +185,15 @@ CLASS({
             }
           }
 
-          // 2. Data to write (almost; see 3.).
+          // 2. Data to write.
+          // TODO(markdittmer): This is only computed unconditionally for
+          // debugging purposes. Move it into if-statement below once all tests
+          // are passing.
           var dataMask = this.maskNotMSBs(32 - numChunkBits + startBitOffset),
           maskedDataMask = dataMask & dropLSBsMask;
-          value |= (values[i] >>> startBitOffset) & maskedDataMask;
+          if ( i < values.length ) {
+            value |= (values[i] >>> startBitOffset) & maskedDataMask;
+          }
 
           // 3. Chunk part beyond intended write location. If there are bits in
           // this chunk beyond the intended write location, write them back.
@@ -216,98 +220,44 @@ CLASS({
       }
     },
     {
-      name: 'read2_',
+      name: 'read_',
       code: function(startBit, numBits, numChunkBits) {
-      }
-    },
-    {
-      name: 'write_old_',
-      code: function(startBit, numBits, numChunkBits, values) {
-        var startByte = Math.floor(startBit / 8),
-            startBitOffset = startBit % 8,
-            numChunks = Math.ceil((startBit + numBits) / numChunkBits),
-            // TODO(markdittmer): Used in two contexts (name currently matches
-            // first). Rename?
-            firstChunkShift = (numChunkBits - startBitOffset) % numChunkBits,
-            firstByteShift = (8 - startBitOffset) % 8,
-            firstByteAlign = numChunkBits - 8,
-            // TODO(markdittmer): Used in two contexts (name currently matches
-            // first). Rename?
-            keepLastChunkShift = (startBitOffset + numBits) % numChunkBits,
-            dropLastChunkShift = (numChunkBits - keepLastChunkShift) %
-                numChunkBits;
-
+        var startBitOffset = startBit % 8,
+            invStartBitOffset = this.modInv(startBitOffset, numChunkBits),
+            numChunks = Math.ceil(numBits / numChunkBits),
+            numChunkBytes = numChunkBits / 8,
+            startByte = Math.floor(startBit / 8),
+            values = [];
         for ( var i = 0; i < numChunks; ++i ) {
           var value = 0,
-          byteOffset = i * (numChunkBits / 8),
-          writeIdx = startByte + byteOffset,
-          baseValue = values[i] >>> startBitOffset,
-          // TODO(markdittmer): This shouldn't be calculated for i = 0.
-          carryClipShift = 32 - numChunkBits,
-          carryValue = values[i - 1] << firstChunkShift <<
-              carryClipShift >>> carryClipShift,
+          baseMask = this.maskNotMSBs(32 - numChunkBits),
+          currentMask = this.maskNotLSBs(startBitOffset) & baseMask;
 
-          // Predicates for potential bit-OR'ing steps.
-          keepFirstChunkBits = (i === 0) && (startBitOffset !== 0),
-          isLastChunk = (i + 1) >= Math.ceil((startBit + numBits) / numChunkBits),
-          latterChunkWithShift = (i > 0) && (startBitOffset !== 0),
-          extraLastChunkBits = isLastChunk && (keepLastChunkShift !== 0),
-          lastChunkWithShift = isLastChunk && (keepLastChunkShift !== 0);
+          value |= (this.getChunk_(numChunkBits, startByte +
+              (i * numChunkBytes)) << startBitOffset) & currentMask;
 
-          // 1. On first iteration, if there are MSBs that should be kept from
-          // the current byte due to the byte-aligned startBit offset
-          // (startBit % 8), then get those bits from the view.
-          if ( keepFirstChunkBits ) {
-            // Shift then shift back to zero-out unwanted bits.
-            value |= this.view.getUint8(startByte) >>> firstByteShift <<
-                firstByteShift << firstByteAlign;
-         }
-
-          // 2. On the last iteration, if there are LSBs that should be
-          // kept from the current chunk due to the chunk-aligned
-          // last-bit-location (number of such bits is:
-          // numChunkBits - keepLastChunkShift), then get those bits
-          // from the view.
-          if ( extraLastChunkBits ) {
-            // Shift then shift back to zero-out unwanted bits.
-            value |= this.getChunk_(32, startByte + byteOffset) <<
-                keepLastChunkShift >>> keepLastChunkShift;
+          // TODO(markdittmer): This is only computed unconditionally for
+          // debugging purposes. Move it into if-statement below once all tests
+          // are passing.
+          var nextMask = this.maskKeepLSBs(startBitOffset) & baseMask;
+          if ( ((i + 1) * numChunkBits) - startBitOffset < numBits ) {
+            value |= this.getChunk_(numChunkBits, startByte +
+              ((i + 1) * numChunkBytes)) >>> invStartBitOffset & nextMask;
           }
 
-          // 3. Value to write (part 1): opt_values[i] shifted
-          // byte-aligned startBit offset (startBit % 8). On the last
-          // iteration, if there are LSBs that should be kept from the
-          // current chunk, then be sure to zero-out those bits in the
-          // value being written here.
-          if ( extraLastChunkBits ) {
-            // Shift then shift back to zero-out unwanted bits.
-            value |= baseValue >>> dropLastChunkShift <<
-                dropLastChunkShift;
-          } else {
-            value |= baseValue;
-          }
+          var fullMask = currentMask ^ nextMask;
+          this.console.assert(fullMask === (((1 << numChunkBits) - 1) ||
+              (0xFFFFFFFF | 0)), 'Read masks fail to account for every bit ' +
+              'exactly once. Masks XOR\'d is ' + fullMask.toString(16));
 
-          // 4. Value to write (part 2): if this isn't the first chunk
-          // and chunks aren't byte-aligned, then carry in
-          // numChunkBits - (startBit % 8) bits from previous chunk. On
-          // the last iteration, if there are LSBs that should be kept
-          // from the current chunk, then be sure to zero-out those bits
-          // in the value being written here.
-          if ( latterChunkWithShift ) {
-            if ( lastChunkWithShift ) {
-              value |= carryValue >>> dropLastChunkShift <<
-                  dropLastChunkShift;
-            } else {
-              value |= carryValue;
-            }
-          }
-
-          this.putChunk_(numChunkBits, writeIdx, value);
+          values.push(value);
         }
+
+        return values;
       }
     },
     {
-      name: 'read_',
+      name: 'read_old_',
       code: function(startBit, numBits, numChunkBits) {
         // NOTE: This implementation will pad at the LSB end. E.g., read two
         // bytes, 0xABCD into a four-byte location will yield 0xABCD0000.
@@ -367,6 +317,31 @@ CLASS({
     },
     {
       name: 'getChunk_',
+      code: function(numChunkBits, viewByteOffset) {
+        var numChunkBytes = Math.ceil(numChunkBits / 8);
+
+        // Fast path: There is room to do a natural read.
+        if ( viewByteOffset >= 0 &&
+            viewByteOffset <= this.numBytes - numChunkBytes ) {
+          return this.view['getUint' + numChunkBits](viewByteOffset);
+        }
+
+        // Slow path: Do the largest read the buffer will allow; shift to
+        // adjust to requested index, and to clip size to requested read size.
+        var chunk = 0;
+        for ( var i = viewByteOffset;
+              (i * 8) < (viewByteOffset + numChunkBytes); ++i ) {
+          chunk <<= 8;
+          if ( i >= 0 && i < this.numBytes ) {
+            chunk |= this.view.getUint8(i);
+          }
+        }
+
+        return chunk;
+      }
+    },
+    {
+      name: 'getChunk_old_',
       code: function(numChunkBits, viewByteOffset) {
         var numChunkBytes = Math.ceil(numChunkBits / 8);
 
@@ -484,7 +459,6 @@ CLASS({
       code: multiline(function() {/*
         var bv = X.lookup('foam.dao.index.BitVector').create();
         var numsIn = [0x9ABCDEF9 | 0];
-        debugger;
         bv.writeNumbers(16, 32, numsIn);
         var numsOut = bv.readNumbers(0, 64);
         this.assert(numsOut[0] === (numsIn[0] >>> 16), 'Number should be ' +
@@ -551,6 +525,7 @@ CLASS({
             numsIn = [(0xFFFFFFFF | 0)],
             len = size;
         bv.writeNumbers(0, len, numsIn);
+        debugger;
         var numsOut = bv.readNumbers(0, size),
             expected = numsIn[0] >>> (32 - len) << (32 - len);
 
@@ -667,11 +642,11 @@ CLASS({
       description: 'Write to bitvector at some offset',
       code: multiline(function() {/*
         var offset = 2,
-            strIn = 'Hello world!!',
+            strIn = 'He',
             bitLen = strIn.length * 16,
             size = bitLen + (2 * offset),
             bv = X.lookup('foam.dao.index.BitVector').create({ numBits: size }),
-            expected = 'Hello world!!';
+            expected = 'He';
         bv.writeString(offset, bitLen, strIn);
         var strOut = bv.readString(offset, bitLen);
         this.assert(strOut === expected, 'String should be "' + expected +
