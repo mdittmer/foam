@@ -257,65 +257,6 @@ CLASS({
       }
     },
     {
-      name: 'read_old_',
-      code: function(startBit, numBits, numChunkBits) {
-        // NOTE: This implementation will pad at the LSB end. E.g., read two
-        // bytes, 0xABCD into a four-byte location will yield 0xABCD0000.
-        var out = [],
-            startByte = Math.floor(startBit / 8),
-            startBitOffset = startBit % 8,
-            numChunkBytes = numChunkBits / 8,
-            numChunks = Math.ceil(numBits / numChunkBits),
-            // TODO(markdittmer): Name copied from write_. Rename?
-            keepLastChunkShift = (startBit + numBits) % numChunkBits;
-
-        for ( var i = 0; i < numChunks; ++i ) {
-          var value = 0,
-          byteOffset = i * numChunkBytes,
-          endByteOffset = (i + 1) * numChunkBytes,
-          lastChunkShift = numChunkBits - keepLastChunkShift,
-          baseValue = this.getChunk_(numChunkBits, startByte + byteOffset) <<
-              startBitOffset,
-
-          // Predicates for potential bit-OR'ing steps.
-          isLastChunk = (i + 1) >= Math.ceil(numBits / numChunkBits),
-          hasBytePastChunk = (startByte + endByteOffset) < this.numBytes;
-
-          // 1. Read the current chunk, shifting off (startBit % 8) MSBs.
-          // If this is the last chunk and we are not keeping all of its
-          // bits, then be sure to drop the LSBs that are to be ignored.
-          if ( isLastChunk && keepLastChunkShift !== 0 ) {
-            value |= baseValue >>> keepLastChunkShift << keepLastChunkShift;
-          } else {
-            value |= baseValue;
-          }
-
-          // 2. If there is a carry-in, then carry it in.
-
-          // TODO(markdittmer): Is the action below necessary?
-          // As above, drop
-          // that don't fit into the requested range of bits.
-          if ( startBitOffset !== 0 && hasBytePastChunk ) {
-            var carryValue = this.view.getUint8(startByte + endByteOffset) >>>
-                ((8 - startBitOffset) % 8);
-            value |= carryValue;
-            // var carryValue = this.view.getUint8(startByte + endByteOffset) >>>
-            //     startBitOffset;
-            // // TODO(markdittmer): This is not shifting the correct distance.
-            // if ( isLastChunk && keepLastChunkShift ) {
-            //   value |= carryValue >>> lastChunkShift << lastChunkShift;
-            // } else {
-            //   value |= carryValue;
-            // }
-          }
-
-          out.push(value);
-        }
-
-        return out;
-      }
-    },
-    {
       name: 'getChunk_',
       code: function(numChunkBits, viewByteOffset) {
         var numChunkBytes = Math.ceil(numChunkBits / 8);
@@ -338,45 +279,6 @@ CLASS({
         }
 
         return chunk;
-      }
-    },
-    {
-      name: 'getChunk_old_',
-      code: function(numChunkBits, viewByteOffset) {
-        var numChunkBytes = Math.ceil(numChunkBits / 8);
-
-        // Fast path: There is room to do a natural read.
-        if ( viewByteOffset >= 0 &&
-            viewByteOffset <= this.numBytes - numChunkBytes ) {
-          return this.view['getUint' + numChunkBits](viewByteOffset);
-        }
-
-        // Slow path: Do the largest read the buffer will allow; shift to
-        // adjust to requested index, and to clip size to requested read size.
-        var readNumBytes = (this.numBytes >= 4 ? 4 :
-            (this.numBytes >= 2 ? 2 : 1)),
-            readNumBits = readNumBytes * 8,
-            maxReadIdx = this.numBytes - readNumBytes,
-            readByteOffset = (viewByteOffset < 0 ? 0 :
-            (viewByteOffset > maxReadIdx ? maxReadIdx :
-            viewByteOffset)),
-            offsetBitDiff = Math.abs(readByteOffset - viewByteOffset) * 8,
-            clipChunkShift = numChunkBits - readNumBits,
-            chunk = this.view['getUint' + readNumBits](readByteOffset);
-
-        this.console.assert(readByteOffset !== viewByteOffset ||
-            clipChunkShift !== 0, 'Bit vector read took slow path when it ' +
-            'should have taken fast path');
-
-        // Align read MSB with chunk MSB.
-        if ( clipChunkShift !== 0 ) chunk <<= clipChunkShift;
-
-        // If necessary, shift MSB-aligned read to desired read location
-        // alignment (relative to actual read alignment forced by size of read).
-        if ( readByteOffset > viewByteOffset) return chunk >>> offsetBitDiff;
-        else if ( readByteOffset < viewByteOffset )
-          return chunk << offsetBitDiff;
-        else return chunk;
       }
     },
     {
@@ -525,7 +427,6 @@ CLASS({
             numsIn = [(0xFFFFFFFF | 0)],
             len = size;
         bv.writeNumbers(0, len, numsIn);
-        debugger;
         var numsOut = bv.readNumbers(0, size),
             expected = numsIn[0] >>> (32 - len) << (32 - len);
 
