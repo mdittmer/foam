@@ -27,7 +27,7 @@
     var i;
 
     for ( i = 0; i < tests.length; ++i ) {
-      tests[i].test();
+      tests[i].code();
     }
 
     var UnitTest = X.lookup('UnitTest');
