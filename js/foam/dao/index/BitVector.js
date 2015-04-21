@@ -330,7 +330,7 @@ CLASS({
         // adjust to requested index, and to clip size to requested read size.
         var chunk = 0;
         for ( var i = viewByteOffset;
-              (i * 8) < (viewByteOffset + numChunkBytes); ++i ) {
+              i < (viewByteOffset + numChunkBytes); ++i ) {
           chunk <<= 8;
           if ( i >= 0 && i < this.numBytes ) {
             chunk |= this.view.getUint8(i);
