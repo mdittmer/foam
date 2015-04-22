@@ -1,4 +1,3 @@
-
 /**
  * @license
  * Copyright 2015 Google Inc. All Rights Reserved.
@@ -198,7 +197,6 @@ CLASS({
       code: multiline(function() {/*
         // Store and check 00000000001, 00000000010, ..., 10000000000.
         var bg = X.lookup('foam.dao.index.BlockGenerator').create();
-        debugger;
         var vector = bg.generateBlocks(1, 11);
         for ( var i = 0; i < 11; ++i ) {
           var chunk = vector.readNumbers(i * 11, 11)[0],
