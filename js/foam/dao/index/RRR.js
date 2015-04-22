@@ -21,11 +21,13 @@ CLASS({
     {
       model_: 'IntProperty',
       name: 'blockSize',
+      documentation: 'Number of bits per block.',
       defaultValue: 8
     },
     {
       model_: 'IntProperty',
       name: 'superBlockSize',
+      documentation: 'Number of blocks per super-block.',
       defaultValue: 8
     }
   ],

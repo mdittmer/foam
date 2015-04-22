@@ -15,7 +15,8 @@ CLASS({
   package: 'foam.dao.index',
 
   requires: [
-    'foam.Memo'
+    'foam.Memo',
+    'foam.dao.index.BitVector'
   ],
   imports: [
     'console'
@@ -25,7 +26,7 @@ CLASS({
     {
       model_: 'FunctionProperty',
       name: 'factorial',
-      defaultValueFn: function() {
+      lazyFactory: function() {
         return this.Memo.create({
           f: function(n) {
             if ( n < 1 ) return 1;
@@ -37,7 +38,7 @@ CLASS({
     {
       model_: 'FunctionProperty',
       name: 'binomial',
-      defaultValueFn: function() {
+      lazyFactory: function() {
         return this.Memo.create({
           f: function(n, k) {
             return this.factorial(n) /
@@ -52,7 +53,7 @@ CLASS({
     {
       model_: 'FunctionProperty',
       name: 'generateBlocks',
-      defaultValueFn: function() {
+      lazyFactory: function() {
         return this.Memo.create({
           f: function(numBits, blockSize) {
             this.console.assert(numBits <= blockSize,
@@ -60,21 +61,20 @@ CLASS({
             this.console.assert(blockSize < 31,
                 'Maximum supported block size is 30 bits');
             var totalBits = this.binomial(blockSize, numBits) * blockSize,
-                totalBytes = Math.ceil(totalBits / 8),
-                buffer = new ArrayBuffer(totalBytes),
-                bytes = new Uint8Array(buffer),
-                block = this.firstBlock(numBits),
-                mask = this.firstBlock(blockSize);
-            while ( block & mask === block ) {
-              this.appendBits(block, numBits, bytes);
+            vector = this.BitVector.create({ numBits: totalBits }),
+            block = this.firstBlock(numBits),
+            mask = this.firstBlock(blockSize);
+            for ( var i = 0; (block & mask) === block; i += blockSize ) {
+              var msbAlignedBlock = block << (32 - blockSize);
+              vector.writeNumbers(i, blockSize, [msbAlignedBlock]);
               block = this.nextBlock(block);
             }
-            return bytes;
+            return vector;
           }.bind(this),
           hashFunction: function(numBits, blockSize) {
             return numBits + ',' + blockSize;
           }
-        });
+        }).get();
       }
     }
   ],
@@ -110,7 +110,103 @@ CLASS({
         return tmp | ((((tmp & -tmp) / (prevBlock & -prevBlock)) >>> 1) - 1) | 0;
       }
     }
-  ]
+  ],
 
-  // TODO(markdittmer): Write tests.
+  tests: [
+    {
+      model_: 'UnitTest',
+      name: '1/8',
+      description: 'Compute 1 set bit in 8-bit block',
+      code: multiline(function() {/*
+        // Store and check 00000001, 00000010, ..., 10000000.
+        var bg = X.lookup('foam.dao.index.BlockGenerator').create();
+        var vector = bg.generateBlocks(1, 8);
+        for ( var i = 0; i < 8; ++i ) {
+          var chunk = vector.readNumbers(i * 8, 8)[0],
+              expected = 1 << (32 - 8 + i);
+          this.assert(chunk === expected, 'Chunk should be ' +
+              expected + ' and is ' + chunk);
+        }
+      */})
+    },
+    {
+      model_: 'UnitTest',
+      name: '7/8',
+      description: 'Compute 7 set bit in 8-bit block',
+      code: multiline(function() {/*
+        // Store and check 01111111, 10111111, ..., 11111110.
+        var bg = X.lookup('foam.dao.index.BlockGenerator').create();
+        var vector = bg.generateBlocks(7, 8);
+        for ( var i = 0; i < 8; ++i ) {
+          var chunk = vector.readNumbers(i * 8, 8)[0],
+              expected = (~(1 << (32 - (i + 1))) &
+                  (0xFF000000 | 0));
+          this.assert(chunk === expected, 'Chunk should be ' +
+              expected + ' and is ' + chunk);
+        }
+      */})
+    },
+    {
+      model_: 'UnitTest',
+      name: '2/8',
+      description: 'Compute 2 set bit in 8-bit block',
+      code: multiline(function() {/*
+        // Store and check 00000011, 00000101, ..., 11000000.
+        var bg = X.lookup('foam.dao.index.BlockGenerator').create();
+        var vector = bg.generateBlocks(2, 8);
+        var expected = [
+          0x03000000 | 0,
+          0x05000000 | 0,
+          0x06000000 | 0,
+          0x09000000 | 0,
+          0x0A000000 | 0,
+          0x0C000000 | 0,
+          0x11000000 | 0,
+          0x12000000 | 0,
+          0x14000000 | 0,
+          0x18000000 | 0,
+          0x21000000 | 0,
+          0x22000000 | 0,
+          0x24000000 | 0,
+          0x28000000 | 0,
+          0x30000000 | 0,
+          0x41000000 | 0,
+          0x42000000 | 0,
+          0x44000000 | 0,
+          0x48000000 | 0,
+          0x50000000 | 0,
+          0x60000000 | 0,
+          0x81000000 | 0,
+          0x82000000 | 0,
+          0x84000000 | 0,
+          0x88000000 | 0,
+          0x90000000 | 0,
+          0xA0000000 | 0,
+          0xC0000000 | 0
+        ];
+        for ( var i = 0; i < expected.length; ++i ) {
+          var chunk = vector.readNumbers(i * 8, 8)[0];
+          this.assert(chunk === expected[i], 'Chunk should be ' +
+              expected[i] + ' and is ' + chunk);
+        }
+      */})
+    },
+    {
+      model_: 'UnitTest',
+      name: '1/11',
+      description: 'Compute 1 set bit in 11-bit block',
+      code: multiline(function() {/*
+        // Store and check 00000000001, 00000000010, ..., 10000000000.
+        var bg = X.lookup('foam.dao.index.BlockGenerator').create();
+        debugger;
+        var vector = bg.generateBlocks(1, 11);
+        for ( var i = 0; i < 11; ++i ) {
+          var chunk = vector.readNumbers(i * 11, 11)[0],
+              expected = 1 << (32 - 11 + i);
+          this.assert(chunk === expected, 'Chunk should be ' +
+              expected + ' and is ' + chunk);
+        }
+      */})
+    }
+  ]
 });

@@ -179,8 +179,9 @@ CLASS({
                   maskedCarryKeepMask;
               value |= carry;
             } else {
-              var keep = this.getChunk_(numChunkBits, i * numChunkBytes) &
-                  maskedCarryKeepMask;
+              var keep = this.getChunk_(
+                  numChunkBits, startByte + (i * numChunkBytes)) &
+                      maskedCarryKeepMask;
               value |= keep;
             }
           }
@@ -230,8 +231,13 @@ CLASS({
             values = [];
         for ( var i = 0; i < numChunks; ++i ) {
           var value = 0,
+          bitsToClip = ((i + 1) * numChunkBits) - numBits,
           baseMask = this.maskNotMSBs(32 - numChunkBits),
-          currentMask = this.maskNotLSBs(startBitOffset) & baseMask;
+          currentMask = this.maskNotLSBs(
+              // Mask out carry-in or bits not included in bit count, whichever
+              // number of bits is greater.
+              Math.max(startBitOffset, bitsToClip)) &
+                  baseMask;
 
           value |= (this.getChunk_(numChunkBits, startByte +
               (i * numChunkBytes)) << startBitOffset) & currentMask;
@@ -239,19 +245,27 @@ CLASS({
           // TODO(markdittmer): This is only computed unconditionally for
           // debugging purposes. Move it into if-statement below once all tests
           // are passing.
-          var nextMask = this.maskKeepLSBs(startBitOffset) & baseMask;
+          var clipCheckMask = bitsToClip > 0 ?
+              this.maskKeepLSBs(bitsToClip) & baseMask : 0,
+          clipMask = bitsToClip > 0 ?
+              this.maskNotLSBs(bitsToClip) & baseMask : ~0,
+          nextMask = this.maskKeepLSBs(startBitOffset) & clipMask;
           if ( ((i + 1) * numChunkBits) - startBitOffset < numBits ) {
             value |= this.getChunk_(numChunkBits, startByte +
               ((i + 1) * numChunkBytes)) >>> invStartBitOffset & nextMask;
           }
 
-          var fullMask = currentMask ^ nextMask;
+          var fullMask = currentMask ^ nextMask ^ clipCheckMask;
           this.console.assert(fullMask === (((1 << numChunkBits) - 1) ||
               (0xFFFFFFFF | 0)), 'Read masks fail to account for every bit ' +
               'exactly once. Masks XOR\'d is ' + fullMask.toString(16));
 
           values.push(value);
         }
+        // TODO(markdittmer): We are not clipping overwritten bits.
+        // Guess as to what's needed: Mask OFF invStartBitOffset LSBs.
+        // values[values.length - 1] &= this.maskNotLSBs(numChunkBits -
+        //     (numBits % numChunkBits));
 
         return values;
       }
@@ -543,11 +557,11 @@ CLASS({
       description: 'Write to bitvector at some offset',
       code: multiline(function() {/*
         var offset = 2,
-            strIn = 'He',
+            strIn = 'Hello world!!',
             bitLen = strIn.length * 16,
             size = bitLen + (2 * offset),
             bv = X.lookup('foam.dao.index.BitVector').create({ numBits: size }),
-            expected = 'He';
+            expected = 'Hello world!!';
         bv.writeString(offset, bitLen, strIn);
         var strOut = bv.readString(offset, bitLen);
         this.assert(strOut === expected, 'String should be "' + expected +
