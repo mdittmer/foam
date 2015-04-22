@@ -52,6 +52,7 @@ CLASS({
     {
       model_: 'FunctionProperty',
       name: 'generateBlocks',
+      todo: 'Since managing returned vector is the responsibility of the caller, this probably should not be memoized here. If anything, the caller can memoize.',
       lazyFactory: function() {
         return this.Memo.create({
           f: function(numBits, blockSize) {
@@ -115,7 +116,7 @@ CLASS({
     {
       model_: 'UnitTest',
       name: '1/8',
-      description: 'Compute 1 set bit in 8-bit block',
+      description: 'Compute 1-bit set bit in 8-bit block',
       code: multiline(function() {/*
         // Store and check 00000001, 00000010, ..., 10000000.
         var bg = X.lookup('foam.dao.index.BlockGenerator').create();
@@ -131,7 +132,7 @@ CLASS({
     {
       model_: 'UnitTest',
       name: '7/8',
-      description: 'Compute 7 set bit in 8-bit block',
+      description: 'Compute 7-bit set bit in 8-bit block',
       code: multiline(function() {/*
         // Store and check 01111111, 10111111, ..., 11111110.
         var bg = X.lookup('foam.dao.index.BlockGenerator').create();
@@ -148,7 +149,7 @@ CLASS({
     {
       model_: 'UnitTest',
       name: '2/8',
-      description: 'Compute 2 set bit in 8-bit block',
+      description: 'Compute 2-bit set bit in 8-bit block',
       code: multiline(function() {/*
         // Store and check 00000011, 00000101, ..., 11000000.
         var bg = X.lookup('foam.dao.index.BlockGenerator').create();
@@ -193,7 +194,7 @@ CLASS({
     {
       model_: 'UnitTest',
       name: '1/11',
-      description: 'Compute 1 set bit in 11-bit block',
+      description: 'Compute 1-bit set bit in 11-bit block',
       code: multiline(function() {/*
         // Store and check 00000000001, 00000000010, ..., 10000000000.
         var bg = X.lookup('foam.dao.index.BlockGenerator').create();
