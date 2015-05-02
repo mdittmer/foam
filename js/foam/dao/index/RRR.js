@@ -15,13 +15,32 @@ CLASS({
 
   requires: [
     'foam.Memo',
-    'foam.dao.index.BlockGenerator'
+    'foam.dao.index.PopCountMapGenerator'
   ],
   imports: [
-    'blockGenerator'
+    'blockGenerator',
+    'popCountMapGenerator'
+  ],
+  exports: [
+    'blockGenerator',
+    'popCountMapGenerator'
   ],
 
   properties: [
+    {
+      name: 'blockGenerator',
+      type: 'foam.dao.index.BlockGenerator',
+      lazyFactory: function() {
+        return this.BlockGenerator.create();
+      }
+    },
+    {
+      name: 'popCountMapGenerator',
+      type: 'foam.dao.index.PopCountMapGenerator',
+      lazyFactory: function() {
+        return this.PopCountMapGenerator.create();
+      }
+    },
     {
       model_: 'IntProperty',
       name: 'blockSize',
@@ -35,38 +54,25 @@ CLASS({
       defaultValue: 8
     },
     {
-      name: 'blockGenerator',
-      type: 'foam.dao.index.BlockGenerator',
-      lazyFactory: function() {
-        this.BlockGenerator.create();
-      }
-    },
-    {
       name: 'popCountMap_',
-      lazyFactory: function() { return {}; }
+      lazyFactory: function() {
+        return this.generatePopCountMap_();
+      }
     }
   ],
 
   methods: {
-    // TODO(markdittmer): This should probably live in its own Memoizing
-    // component so that each popCountMap_ is only generated once.
-    generateBlocks_: function() {
-      var blocks = this.blockGenerator.generateBlocks(
-          this.blockSize, this.superBlockSize);
-      for ( var i = 0; i < blocks.length; ++i ) {
-        var block = blocks[i];
-        this.popCountMap_[block] = this.generatePopCounts_(block);
-      }
+    init: function() {
+      this.SUPER.apply(this, arguments);
+      Events.dynamic(function() {
+        this.blockSize;
+        this.superBlockSize;
+        this.generatePopCountMap_();
+      }.bind(this));
     },
-    generatePopCounts_: function(block, numBits) {
-      var counts = new Array(numBits);
-      var count = 0;
-      for ( var i = numBits - 1; i >= 0; --i ) {
-        if ( block & 1 ) ++count;
-        counts[i] = count;
-        block >>>= block;
-      }
-      return counts;
+    generatePopCountMap_: function() {
+      return this.popCountMapGenerator.generatePopCountMap(
+          this.blockSize, this.superBlockSize);
     }
   }
 

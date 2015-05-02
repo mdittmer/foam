@@ -14,8 +14,7 @@ CLASS({
   package: 'foam.dao.index',
 
   requires: [
-    'foam.Memo',
-    'foam.dao.index.BitVector'
+    'foam.Memo'
   ],
   imports: [
     'console'
@@ -58,7 +57,7 @@ CLASS({
             this.console.assert(numBits <= blockSize,
                 'Cannot fit more bits than size of block');
             this.console.assert(blockSize < 31,
-                'Maximum supported block size is 30 bits');
+                'Maximum supported block size for block generator is 30 bits');
             var numBlocks = this.binomial(blockSize, numBits);
             var arr = new Array(numBlocks);
             var block = this.firstBlock(numBits);
