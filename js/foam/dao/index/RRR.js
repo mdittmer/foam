@@ -1,4 +1,3 @@
-
 /**
  * @license
  * Copyright 2015 Google Inc. All Rights Reserved.
@@ -15,8 +14,13 @@ CLASS({
   package: 'foam.dao.index',
 
   requires: [
-    'foam.Memo'
+    'foam.Memo',
+    'foam.dao.index.BlockGenerator'
   ],
+  imports: [
+    'blockGenerator'
+  ],
+
   properties: [
     {
       model_: 'IntProperty',
@@ -29,14 +33,42 @@ CLASS({
       name: 'superBlockSize',
       documentation: 'Number of blocks per super-block.',
       defaultValue: 8
+    },
+    {
+      name: 'blockGenerator',
+      type: 'foam.dao.index.BlockGenerator',
+      lazyFactory: function() {
+        this.BlockGenerator.create();
+      }
+    },
+    {
+      name: 'popCountMap_',
+      lazyFactory: function() { return {}; }
     }
   ],
 
-  methods: [
-    // TODO(markdittmer): Implement putting strings. BlockGenerator lazily provides
-    // lookup tables. This component must manage raw class+offset bits +
-    // super-block metadata.
-  ]
+  methods: {
+    // TODO(markdittmer): This should probably live in its own Memoizing
+    // component so that each popCountMap_ is only generated once.
+    generateBlocks_: function() {
+      var blocks = this.blockGenerator.generateBlocks(
+          this.blockSize, this.superBlockSize);
+      for ( var i = 0; i < blocks.length; ++i ) {
+        var block = blocks[i];
+        this.popCountMap_[block] = this.generatePopCounts_(block);
+      }
+    },
+    generatePopCounts_: function(block, numBits) {
+      var counts = new Array(numBits);
+      var count = 0;
+      for ( var i = numBits - 1; i >= 0; --i ) {
+        if ( block & 1 ) ++count;
+        counts[i] = count;
+        block >>>= block;
+      }
+      return counts;
+    }
+  }
 
   // TODO(markdittmer): Write tests.
 });
