@@ -39,6 +39,8 @@ CLASS({
       lazyFactory: function() {
         return this.Memo.create({
           f: function(n, k) {
+            // TODO(markdittmer): Optimize further as:
+            // multiplySequence(k, n) / factorial(n - k).
             return this.factorial(n) /
                 (this.factorial(k) * this.factorial(n - k));
           }.bind(this),
@@ -180,6 +182,63 @@ CLASS({
           this.assert(chunk === expected, 'Chunk should be ' +
               expected + ' and is ' + chunk);
         }
+      */})
+    },
+    {
+      model_: 'UnitTest',
+      name: 'Factorial memoization',
+      description: 'Confirm that factorial results are memoized.',
+      code: multiline(function() {/*
+        var bg = X.lookup('foam.dao.index.BlockGenerator').create();
+        var t0 = GLOBAL.performance.now();
+        var fact1 = bg.factorial(100);
+        var t1 = GLOBAL.performance.now();
+        var fact2 = bg.factorial(100);
+        var t2 = GLOBAL.performance.now();
+        this.assert((t1 - t0) >= (t2 - t1), 'Factorial: Expected memoization ' +
+            'to result in improved performance');
+      */})
+    },
+    {
+      model_: 'UnitTest',
+      name: 'Binomial memoization',
+      description: 'Confirm that binomial results are memoized.',
+      code: multiline(function() {/*
+        var bg = X.lookup('foam.dao.index.BlockGenerator').create();
+        var t0 = GLOBAL.performance.now();
+        var bin1 = bg.binomial(27, 19);
+        var t1 = GLOBAL.performance.now();
+        var bin2 = bg.binomial(27, 19);
+        var t2 = GLOBAL.performance.now();
+        this.assert((t1 - t0) >= (t2 - t1), 'Binomial: Expected memoization ' +
+            'to result in improved performance');
+      */})
+    },
+    {
+      model_: 'UnitTest',
+      name: 'Block memoization',
+      description: 'Confirm that generateBlocks results are memoized',
+      code: multiline(function() {/*
+        var bg = X.lookup('foam.dao.index.BlockGenerator').create();
+        var t0 = GLOBAL.performance.now();
+        var arr1 = bg.generateBlocks(9, 19);
+        var t1 = GLOBAL.performance.now();
+        var arr2 = bg.generateBlocks(9, 19);
+        var t2 = GLOBAL.performance.now();
+        this.assert((t1 - t0) >= (t2 - t1), 'generateBlocks: Expected ' +
+            'to result in improved performance');
+      */})
+    },
+    {
+      model_: 'UnitTest',
+      name: 'Block identity',
+      description: 'Confirm that repeated generateBlocks returns same object',
+      code: multiline(function() {/*
+        var bg = X.lookup('foam.dao.index.BlockGenerator').create();
+        var arr1 = bg.generateBlocks(7, 9);
+        var arr2 = bg.generateBlocks(7, 9);
+        this.assert(arr1 === arr2, 'generateBlocks: Expected ' +
+            'repeated call to return same object');
       */})
     }
   ]
