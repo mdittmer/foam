@@ -82,7 +82,7 @@ CLASS({
             for ( var i = 0; i < numBits; ++i ) {
               if ( block & msb ) ++count;
               counts[i] = count;
-              block <<= block;
+              block <<= 1;
             }
             return counts;
           }.bind(this),
@@ -108,6 +108,36 @@ CLASS({
           return key === '0' || key === '1' || key === '2';
         }).length === Object.keys(pcm).length, 'Expected  keys in 2-bit ' +
             'popcount map to be 0, 1, 2');
+        var expected = {
+          '0': {
+            '0': [0, 0]
+          },
+          '1': {
+            '1': [0, 1],
+            '2': [1, 1]
+          },
+          '2': {
+            '3': [1, 2]
+          }
+        };
+        var keys1 = Object.keys(pcm);
+        var i, j, k, keys1, keys2, key1, key2, arr, exp, act;
+        for ( i = 0; i < keys1.length; ++i ) {
+          key1 = keys1[i];
+          keys2 = Object.keys(pcm[key1]);
+          for ( j = 0; j < keys2.length; ++j ) {
+            key2 = keys2[j];
+            arr = pcm[key1][key2];
+            for ( k = 0; k < arr.length; ++k ) {
+              exp = expected[key1][key2][k];
+              act = pcm[key1][key2][k];
+              if ( act !== exp ) debugger;
+              this.assert(act === exp,
+                   'PopCountMap[' + key1 + '][' + key2 + '][' + k + '] ' +
+                   'should be ' + exp + ' and is ' + act);
+            }
+          }
+        }
       */})
     },
     {

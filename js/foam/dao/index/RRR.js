@@ -45,13 +45,24 @@ CLASS({
       model_: 'IntProperty',
       name: 'blockSize',
       documentation: 'Number of bits per block.',
+      units: 'bits',
       defaultValue: 8
     },
     {
       model_: 'IntProperty',
       name: 'superBlockSize',
       documentation: 'Number of blocks per super-block.',
+      units: 'blocks',
       defaultValue: 8
+    },
+    {
+      model_: 'IntProperty',
+      name: 'classSize',
+      documentation: 'Number of bits in class part of block storage.',
+      units: 'bits',
+      lazyFactory: function() {
+        return this.computeClassSize_();
+      }
     },
     {
       name: 'popCountMap_',
@@ -67,12 +78,28 @@ CLASS({
       Events.dynamic(function() {
         this.blockSize;
         this.superBlockSize;
-        this.generatePopCountMap_();
+        this.popCountMap_ = this.generatePopCountMap_();
+        this.classSize = this.computeClassSize_();
       }.bind(this));
+    },
+    computeClassSize_: function() {
+      return this.log2_(this.blockSize);
+    },
+    computeOffsetSize_: function(classNumber) {
+      return this.log2_(this.blockGenerator.binomial(
+          this.blockSize, classNumber));
     },
     generatePopCountMap_: function() {
       return this.popCountMapGenerator.generatePopCountMap(
           this.blockSize, this.superBlockSize);
+    },
+    log2_: function(num) {
+      var count = 0;
+      while ( num ) {
+        ++count;
+        num >>>= 1;
+      }
+      return count;
     }
   }
 
