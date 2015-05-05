@@ -15,6 +15,7 @@ CLASS({
 
   requires: [
     'foam.Memo',
+    'foam.dao.index.BlockGenerator',
     'foam.dao.index.PopCountMapGenerator'
   ],
   imports: [
@@ -46,14 +47,14 @@ CLASS({
       name: 'blockSize',
       documentation: 'Number of bits per block.',
       units: 'bits',
-      defaultValue: 8
+      defaultValue: 7
     },
     {
       model_: 'IntProperty',
       name: 'superBlockSize',
       documentation: 'Number of blocks per super-block.',
       units: 'blocks',
-      defaultValue: 8
+      defaultValue: 7
     },
     {
       model_: 'IntProperty',
