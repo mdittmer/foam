@@ -62,7 +62,8 @@ CLASS({
   ],
 
   methods: {
-    // TODO(markdittmer): Research and implement a more efficient bwt algorithm.
+    // TODO(markdittmer): This is now duplicate code. A modelled BWT component
+    // has been checked in but is not integrated here yet.
     computeBWT_: function() {
       var len = this.data.length;
       var arr = new Array(len);
