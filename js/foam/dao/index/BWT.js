@@ -16,9 +16,9 @@
 // = (16-bit char code, rank(current bwt idx, 16-bit char code))
 //
 // Not that rank() here is rank in the bwt string, NOT the data string. Need to
-// re-read post on FM-Index to determine whether wavelet tree used for main rank
-// queries are stored for original data or bwt (I think it's original data, so
-// we would need to store a second wavelet tree).
+// double-check post on FM-Index to determine whether wavelet tree used for rank
+// in bwt or data, but I am quite confident that it is bwt, so we can reuse the
+// wavelet tree that we need anyway here, and ditch the extra storage.
 
 CLASS({
   name: 'BWT',
