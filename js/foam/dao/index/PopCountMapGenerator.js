@@ -43,7 +43,12 @@ CLASS({
                 'Maximum supported block size for pop counts is 32 bits');
             var popCountMap = {};
             for ( var i = 0; i <= blockSize; ++i ) {
-              popCountMap[i] = this.generatePopCountMap_(i, blockSize);
+              var popCountData = this.generatePopCountData_(i, blockSize);
+              for ( var j = 0; j < popCountData.length; ++j ) {
+                var data = popCountData[j];
+                popCountMap[data.block] = data;
+                delete data.block;
+              }
             }
             return popCountMap;
           }.bind(this)
@@ -52,17 +57,22 @@ CLASS({
     },
     {
       model_: 'FunctionProperty',
-      name: 'generatePopCountMap_',
+      name: 'generatePopCountData_',
       lazyFactory: function() {
         return this.Memo.create({
           f: function(numBits, blockSize) {
             var blocks = this.blockGenerator.generateBlocks(numBits, blockSize);
-            var popCountMap = {};
+            var popCountData = [];
             for ( var i = 0; i < blocks.length; ++i ) {
               var block = blocks[i];
-              popCountMap[block] = this.generatePopCounts_(block, blockSize);
+              popCountData.push({
+                block: block,
+                popCount: numBits,
+                offset: i,
+                popCounts: this.generatePopCounts_(block, blockSize)
+              });
             }
-            return popCountMap;
+            return popCountData;
           }.bind(this),
           hashFunction: function(numBits, blockSize) {
             return numBits + ',' + blockSize;
@@ -102,38 +112,56 @@ CLASS({
       code: multiline(function() {/*
         var pcmg = X.lookup('foam.dao.index.PopCountMapGenerator').create();
         var pcm = pcmg.generatePopCountMap(2);
-        this.assert(Object.keys(pcm).length === 3, 'Expected three keys in ' +
+        console.log(pcm);
+        this.assert(Object.keys(pcm).length === 4, 'Expected four keys in ' +
             '2-bit popcount map');
         this.assert(Object.keys(pcm).filter(function(key) {
-          return key === '0' || key === '1' || key === '2';
+          return key === '0' || key === '1' || key === '2' || key === '3';
         }).length === Object.keys(pcm).length, 'Expected  keys in 2-bit ' +
-            'popcount map to be 0, 1, 2');
+            'popcount map to be 0, 1, 2, 3');
         var expected = {
           '0': {
-            '0': [0, 0]
+            popCount: 0,
+            offset: 0,
+            popCounts: [0, 0]
           },
           '1': {
-            '1': [0, 1],
-            '2': [1, 1]
+            popCount: 1,
+            offset: 0,
+            popCounts: [0, 1]
           },
           '2': {
-            '3': [1, 2]
+            popCount: 1,
+            offset: 1,
+            popCounts: [1, 1]
+          },
+          '3': {
+            popCount: 2,
+            offset: 0,
+            popCounts: [1, 2]
           }
         };
         var keys1 = Object.keys(pcm);
-        var i, j, k, keys1, keys2, key1, key2, arr, exp, act;
+        var i, j, k, keys2, key1, key2, value, exp, act;
         for ( i = 0; i < keys1.length; ++i ) {
           key1 = keys1[i];
           keys2 = Object.keys(pcm[key1]);
           for ( j = 0; j < keys2.length; ++j ) {
             key2 = keys2[j];
-            arr = pcm[key1][key2];
-            for ( k = 0; k < arr.length; ++k ) {
-              exp = expected[key1][key2][k];
-              act = pcm[key1][key2][k];
-              if ( act !== exp ) debugger;
+            value = pcm[key1][key2];
+            if ( Array.isArray(value) ) {
+              for ( var k = 0; k < value.length; ++k ) {
+                exp = expected[key1][key2][k];
+                act = pcm[key1][key2][k];
+                this.assert(act === exp,
+                     'PopCountMap[' + key1 + '][' + key2 + '][' + k + '] ' +
+                     'should be ' + exp + ' and is ' + act);
+              }
+            } else {
+              exp = expected[key1][key2];
+              act = pcm[key1][key2];
               this.assert(act === exp,
-                   'PopCountMap[' + key1 + '][' + key2 + '][' + k + '] ' +
+                   'PopCountMap[' + key1 + '][' + key2 + '] ' +
                    'should be ' + exp + ' and is ' + act);
             }
           }
@@ -169,28 +197,28 @@ CLASS({
     },
     {
       model_: 'UnitTest',
-      name: 'PopCountMap_ memoization',
-      description: 'Confirm that generatePopCountMap_ results are memoized',
+      name: 'PopCountData_ memoization',
+      description: 'Confirm that generatePopCountData_ results are memoized',
       code: multiline(function() {/*
         var pcmg = X.lookup('foam.dao.index.PopCountMapGenerator').create();
         var t0 = GLOBAL.performance.now();
-        var pcm1 = pcmg.generatePopCountMap_(8, 15);
+        var pcm1 = pcmg.generatePopCountData_(8, 15);
         var t1 = GLOBAL.performance.now();
-        var pcm2 = pcmg.generatePopCountMap_(8, 15);
+        var pcm2 = pcmg.generatePopCountData_(8, 15);
         var t2 = GLOBAL.performance.now();
-        this.assert((t1 - t0) >= (t2 - t1), 'generatePopCountMap_: Expected ' +
+        this.assert((t1 - t0) >= (t2 - t1), 'generatePopCountData_: Expected ' +
             'to result in improved performance');
       */})
     },
     {
       model_: 'UnitTest',
-      name: 'PopCountMap_ identity',
-      description: 'Confirm that repeated generatePopCountMap_ returns same object',
+      name: 'PopCountData_ identity',
+      description: 'Confirm that repeated generatePopCountData_ returns same object',
       code: multiline(function() {/*
         var pcmg = X.lookup('foam.dao.index.PopCountMapGenerator').create();
-        var pcm1 = pcmg.generatePopCountMap_(4, 7);
-        var pcm2 = pcmg.generatePopCountMap_(4, 7);
-        this.assert(pcm1 === pcm2, 'generatePopCountMap_: Expected ' +
+        var pcm1 = pcmg.generatePopCountData_(4, 7);
+        var pcm2 = pcmg.generatePopCountData_(4, 7);
+        this.assert(pcm1 === pcm2, 'generatePopCountData_: Expected ' +
             'repeated call to return same object');
       */})
     },

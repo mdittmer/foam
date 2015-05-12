@@ -92,16 +92,73 @@ CLASS({
         // Read block and LSB-align it.
         var blockValue = bitVector.readNumbers(i, this.blockSize)[0] >>>
             (32 - this.blockSize);
-        var popCount = this.popCount_(blockValue); // TODO(markdittmer): Implement this.
-        var offset = this.offset_(blockValue, popCount); // TODO(markdittmer): Implement this.
+        var popCount = this.popCountMap_[blockValue].popCount;
+        var offset = this.popCountMap_[blockValue].offset;
         // Store values as [class, offset] before compressing them into a
         // BitVector.
         values.push([popCount, offset]);
       }
       // Compress values to BitVectors and store it.
-      this.bitVector = this.valuesToBitVector_(values); // TODO(markdittmer): Implement this.
+      var offsetSizes = this.computeOffsetSizes_(values);
+      this.superBlockOffsets_ = this.computeSuperBlockOffsets_(offsetSizes);
+      this.bitVector_ = this.constructBitVector_(values, offsetSizes);
     },
-    construct_: function() {
+    computeOffsetSizes_: function(values) {
+      var offsetSizes = new Array(values.length);
+      for ( var i = 0; i < values.length; ++i ) {
+        var popCount = values[0];
+        offsetSizes[i] = popCount;
+      }
+      return offsetSizes;
+    },
+    computeSuperBlockOffsets_: function(offsetSizes) {
+      // Every super block contains [size of class number] *
+      // [blocks per super block] bits. It also contains a variable-length
+      // offset computed later.
+      var baseSize = this.classSize * this.superBlockSize;
+      var numSuperBlocks = Math.floor(offsetSizes.length / this.superBlockSize);
+      var counter = 0;
+      var superBlockOffsets = new Array(numSuperBlocks);
+      superBlockOffsets[0] = 0;
+      for ( var i = 1; i < numSuperBlocks; ++i ) {
+        // Sum the number of bits of all variable-sized offets in the previous
+        // super block.
+        var start = this.superBlockSize * (i - 1);
+        var end = start + this.superBlockSize;
+        var variableSize = offsetSizes.slice(start, end).reduce(
+                function(acc, size) {
+                  return acc + size;
+                }, 0);
+        // Store the number of bits prior to the start of the ith super block.
+        superBlockOffsets[i] = counter + baseSize + variableSize;
+        counter += baseSize + variableSize;
+      }
+
+      return superBlockOffsets;
+    },
+    constructBitVector_: function(values, offsetSizes) {
+      // Bit vector size is the size, in bits, of all class values + all
+      // variable-sized offsets.
+      var bitVectorSize = this.classSize * values.length +
+          offsetSizes.reduce(function(acc, size) {
+            return acc + size;
+          }, 0);
+      // Construct bit vector from [popCount, offset] values.
+      var bitVector = this.BitVector.create({ numBits: bitVectorSize });
+      var bitVectorOffset = 0;
+      for ( var i = 0; i < values.length; ++i ) {
+        var popCount = values[0];
+        var offset = values[1];
+        // MSB-align class number before writing to bit vector.
+        bitVector.writeNumbers(bitVectorOffset, this.classSize,
+                               [popCount << (32 - this.classSize)]);
+        bitVectorOffset += this.classSize;
+        // MSB-align offset before writing to bit vector.
+        bitVector.writeNumbers(bitVectorOffset, offsetSizes[i],
+                               [offset << (32 - offsetSizes[i])]);
+      }
+
+      return bitVector;
     },
     computeClassSize_: function() {
       return this.log2_(this.blockSize);
