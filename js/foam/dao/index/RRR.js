@@ -43,6 +43,9 @@ CLASS({
       }
     },
     {
+      name: 'data'
+    },
+    {
       model_: 'IntProperty',
       name: 'blockSize',
       documentation: 'Number of bits per block.',
@@ -82,6 +85,23 @@ CLASS({
         this.popCountMap_ = this.generatePopCountMap_();
         this.classSize = this.computeClassSize_();
       }.bind(this));
+    },
+    fromBitVector: function(bitVector) {
+      var values = [];
+      for ( var i = 0; i < bitVector.bitLength; i += this.blockSize ) {
+        // Read block and LSB-align it.
+        var blockValue = bitVector.readNumbers(i, this.blockSize)[0] >>>
+            (32 - this.blockSize);
+        var popCount = this.popCount_(blockValue); // TODO(markdittmer): Implement this.
+        var offset = this.offset_(blockValue, popCount); // TODO(markdittmer): Implement this.
+        // Store values as [class, offset] before compressing them into a
+        // BitVector.
+        values.push([popCount, offset]);
+      }
+      // Compress values to BitVectors and store it.
+      this.bitVector = this.valuesToBitVector_(values); // TODO(markdittmer): Implement this.
+    },
+    construct_: function() {
     },
     computeClassSize_: function() {
       return this.log2_(this.blockSize);
