@@ -109,7 +109,7 @@ CLASS({
       model_: 'UnitTest',
       name: '2-bit PopCountMap',
       description: 'Confirm values of 2-bit PopCountMap',
-      code: multiline(function() {/*
+      code: function() {
         var pcmg = X.lookup('foam.dao.index.PopCountMapGenerator').create();
         var pcm = pcmg.generatePopCountMap(2);
         console.log(pcm);
@@ -166,13 +166,13 @@ CLASS({
             }
           }
         }
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'PopCountMap memoization',
       description: 'Confirm that generatePopCountMap results are memoized',
-      code: multiline(function() {/*
+      code: function() {
         var pcmg = X.lookup('foam.dao.index.PopCountMapGenerator').create();
         var t0 = GLOBAL.performance.now();
         var pcm1 = pcmg.generatePopCountMap(12);
@@ -181,25 +181,25 @@ CLASS({
         var t2 = GLOBAL.performance.now();
         this.assert((t1 - t0) >= (t2 - t1), 'generatePopCountMap: Expected ' +
             'to result in improved performance');
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'PopCountMap identity',
       description: 'Confirm that repeated generatePopCountMap returns same object',
-      code: multiline(function() {/*
+      code: function() {
         var pcmg = X.lookup('foam.dao.index.PopCountMapGenerator').create();
         var pcm1 = pcmg.generatePopCountMap(14);
         var pcm2 = pcmg.generatePopCountMap(14);
         this.assert(pcm1 === pcm2, 'generatePopCountMap: Expected ' +
             'repeated call to return same object');
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'PopCountData_ memoization',
       description: 'Confirm that generatePopCountData_ results are memoized',
-      code: multiline(function() {/*
+      code: function() {
         var pcmg = X.lookup('foam.dao.index.PopCountMapGenerator').create();
         var t0 = GLOBAL.performance.now();
         var pcm1 = pcmg.generatePopCountData_(8, 15);
@@ -208,25 +208,25 @@ CLASS({
         var t2 = GLOBAL.performance.now();
         this.assert((t1 - t0) >= (t2 - t1), 'generatePopCountData_: Expected ' +
             'to result in improved performance');
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'PopCountData_ identity',
       description: 'Confirm that repeated generatePopCountData_ returns same object',
-      code: multiline(function() {/*
+      code: function() {
         var pcmg = X.lookup('foam.dao.index.PopCountMapGenerator').create();
         var pcm1 = pcmg.generatePopCountData_(4, 7);
         var pcm2 = pcmg.generatePopCountData_(4, 7);
         this.assert(pcm1 === pcm2, 'generatePopCountData_: Expected ' +
             'repeated call to return same object');
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'PopCount memoization',
       description: 'Confirm that generatePopCounts_ results are memoized',
-      code: multiline(function() {/*
+      code: function() {
         var pcmg = X.lookup('foam.dao.index.PopCountMapGenerator').create();
         var t0 = GLOBAL.performance.now();
         var pc1 = pcmg.generatePopCounts_(42, 16);
@@ -235,19 +235,19 @@ CLASS({
         var t2 = GLOBAL.performance.now();
         this.assert((t1 - t0) >= (t2 - t1), 'generatePopCounts_: Expected ' +
             'to result in improved performance');
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'PopCount identity',
       description: 'Confirm that repeated generatePopCounts_ returns same object',
-      code: multiline(function() {/*
+      code: function() {
         var pcmg = X.lookup('foam.dao.index.PopCountMapGenerator').create();
         var pc1 = pcmg.generatePopCounts_(11, 8);
         var pc2 = pcmg.generatePopCounts_(11, 8);
         this.assert(pc1 === pc2, 'generatePopCounts_: Expected ' +
             'repeated call to return same object');
-      */})
+      }
     }
   ]
 });
