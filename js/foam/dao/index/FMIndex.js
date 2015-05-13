@@ -110,11 +110,11 @@ CLASS({
       model_: 'UnitTest',
       name: 'Abracadabra',
       description: 'Ta-da!',
-      code: multiline(function() {/*
+      code: function() {
         var fmi = X.lookup('foam.dao.index.FMIndex').create({ data: 'abracadabra' });
         var bwt = fmi.bwt;
         this.assert(bwt === (fmi.eos + 'drcraaaabba'), 'Expected magic to happen');
-      */})
+      }
     }
   ]
 });
