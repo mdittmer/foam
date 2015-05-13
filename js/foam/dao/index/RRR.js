@@ -15,6 +15,7 @@ CLASS({
 
   requires: [
     'foam.Memo',
+    'foam.dao.index.BitVector',
     'foam.dao.index.BlockGenerator',
     'foam.dao.index.PopCountMapGenerator'
   ],
@@ -70,9 +71,22 @@ CLASS({
     },
     {
       name: 'popCountMap_',
-      lazyFactory: function() {
-        return this.generatePopCountMap_();
+      getter: function() {
+        return this.popCountMapGenerator.generatePopCountMap(
+            this.blockSize, this.superBlockSize);
       }
+    },
+    {
+      type: 'foam.dao.index.BitVector',
+      name: 'bitVector_'
+    },
+    {
+      model_: 'ArrayProperty',
+      name: 'superBlockOffsets_'
+    },
+    {
+      model_: 'ArrayProperty',
+      name: 'superBlockRanks_'
     }
   ],
 
@@ -82,13 +96,16 @@ CLASS({
       Events.dynamic(function() {
         this.blockSize;
         this.superBlockSize;
-        this.popCountMap_ = this.generatePopCountMap_();
         this.classSize = this.computeClassSize_();
       }.bind(this));
     },
     fromBitVector: function(bitVector) {
-      var values = [];
-      for ( var i = 0; i < bitVector.bitLength; i += this.blockSize ) {
+      var values = new Array(Math.ceil(bitVector.numBits / this.blockSize));
+      var superBlockRanks = new Array(Math.ceil(bitVector.numBits /
+          (this.blockSize * this.superBlockSize)));
+      superBlockRanks[0] = 0;
+      var rankCounter = 0;
+      for ( var i = 0; i < bitVector.numBits; i += this.blockSize ) {
         // Read block and LSB-align it.
         var blockValue = bitVector.readNumbers(i, this.blockSize)[0] >>>
             (32 - this.blockSize);
@@ -96,18 +113,66 @@ CLASS({
         var offset = this.popCountMap_[blockValue].offset;
         // Store values as [class, offset] before compressing them into a
         // BitVector.
-        values.push([popCount, offset]);
+        values[i] = [popCount, offset];
+        // Update rank counter, and store super block ranks at super block
+        // boundaries.
+        rankCounter += popCount;
+        if ( (i + 1) % this.superBlockSize === 0 ) {
+          var superBlockIdx = (i + 1) / this.superBlockSize;
+          if ( superBlockIdx < superBlockRanks.length )
+            superBlockRanks[superBlockIdx] = rankCounter;
+        }
       }
+      this.superBlockRanks_ = superBlockRanks;
       // Compress values to BitVectors and store it.
       var offsetSizes = this.computeOffsetSizes_(values);
       this.superBlockOffsets_ = this.computeSuperBlockOffsets_(offsetSizes);
       this.bitVector_ = this.constructBitVector_(values, offsetSizes);
     },
+    rank: function(idx) {
+      var ttlSuperBlockSize = this.blockSize * this.superBlockSize;
+      var superBlockIdx = Math.min(Math.floor(idx / ttlSuperBlockSize),
+                                   this.superBlockRanks_.length - 1);
+      var rank = this.superBlockRanks_[superBlockIdx];
+      var superBlockOffset = this.superBlockOffsets_[superBlockIdx];
+      var bvOffset = superBlockOffset;
+      var numBlockBits = (idx + 1) - (superBlockIdx * ttlSuperBlockSize);
+      var numBlocks = Math.min(Math.ceil(numBlockBits / ttlSuperBlockSize),
+                               this.superBlockSize);
+      if ( idx === 100 ) debugger;
+      for ( var i = 0; i < numBlocks; ++i ) {
+        // Read class (popCount) and offset from bit vector.
+        var popCount = this.bitVector_.readNumbers(
+            bvOffset, this.classSize)[0] >>> (32 - this.classSize);
+        bvOffset += this.classSize;
+        var offsetSize = this.computeOffsetSize_(popCount);
+        var offset = this.bitVector_.readNumbers(
+            bvOffset, offsetSize)[0] >>> (32 - offsetSize);
+        bvOffset += offsetSize;
+
+        // Lookup block value in block array.
+        var blockValue = this.blockGenerator.generateBlocks(
+            popCount, this.blockSize)[offset];
+        // Lookup total pop count in pop count map.
+        var blockPopCounts = this.popCountMap_[blockValue].popCounts;
+        // If bit index is somewhere within this block, then the last bit's
+        // index is: idx - (superBlockOffset + (i * this.blockSize)).
+        // Otherwise, the above value is greater than this.blockSize - 1;
+        // default to that value (which is the rank of the whole block).
+        var blockIdx = Math.min(idx - (superBlockOffset + (i * this.blockSize)),
+                                this.blockSize - 1);
+        var blockRank = blockPopCounts[blockIdx];
+
+          rank += blockRank;
+      }
+
+      return rank;
+    },
     computeOffsetSizes_: function(values) {
       var offsetSizes = new Array(values.length);
       for ( var i = 0; i < values.length; ++i ) {
-        var popCount = values[0];
-        offsetSizes[i] = popCount;
+        var popCount = values[i][0];
+        offsetSizes[i] = this.computeOffsetSize_(popCount);
       }
       return offsetSizes;
     },
@@ -147,8 +212,9 @@ CLASS({
       var bitVector = this.BitVector.create({ numBits: bitVectorSize });
       var bitVectorOffset = 0;
       for ( var i = 0; i < values.length; ++i ) {
-        var popCount = values[0];
-        var offset = values[1];
+        var value = values[i];
+        var popCount = value[0];
+        var offset = value[1];
         // MSB-align class number before writing to bit vector.
         bitVector.writeNumbers(bitVectorOffset, this.classSize,
                                [popCount << (32 - this.classSize)]);
@@ -167,10 +233,6 @@ CLASS({
       return this.log2_(this.blockGenerator.binomial(
           this.blockSize, classNumber));
     },
-    generatePopCountMap_: function() {
-      return this.popCountMapGenerator.generatePopCountMap(
-          this.blockSize, this.superBlockSize);
-    },
     log2_: function(num) {
       var count = 0;
       while ( num ) {
@@ -179,7 +241,47 @@ CLASS({
       }
       return count;
     }
-  }
+  },
 
-  // TODO(markdittmer): Write tests.
+  tests: [
+    {
+      model_: 'UnitTest',
+      name: 'Single 5-bit block',
+      description: 'Check behaviour for single 5-bit block RRR',
+      code: function() {
+        var bv = X.lookup('foam.dao.index.BitVector').create({ numBits: 5 });
+        // Write five MSB-aligned bits: 00101.
+        bv.writeNumbers(0, 5, [0x05 << (32 - 5)]);
+
+        var rrr = X.lookup('foam.dao.index.RRR').create({ blockSize: 5, superBlockSize: 1 });
+        this.assert(rrr.classSize === 3, 'Expected popCount of five-bit block to ' +
+            'fit into exactly 3 bits');
+        rrr.fromBitVector(bv);
+
+        // Class (i.e., popCount): 2 (binary: 010).
+        // Values in class: 00011 00101 00110 01001 01010 01100 10001 10010
+        //                  10100 11000.
+        // Number of values in class: 10 (offsets 0 - 9).
+        // Number of bits to store offset: 4 (0000 - 1001).
+        // Value (00101) Offset: 1 (binary: 0001).
+        // 7-bit RRR value = class, offset = 010 0001.
+
+        // TODO(markdittmer): This tests implementation details; shouldn't be
+        // doing that in a unit test.
+        var expectedValue = 33;
+        // LSB-align 7-bit RRR value.
+        var rrrBitVectorValue = rrr.bitVector_.readNumbers(0, 7)[0] >>>
+            (32 - 7);
+        this.assert(expectedValue === rrrBitVectorValue, 'Expected RRR value ' +
+            'of ' + expectedValue + ' and is ' + rrrBitVectorValue);
+
+        var expected = [0, 0, 1, 1, 2];
+        for ( var i = 0; i < expected.length; ++i ) {
+          var rank = rrr.rank(i);
+          this.assert(rank === expected[i], 'Expected rank(' + i + ') to be ' +
+              expected[i] + ' and is ' + rank);
+        }
+      }
+    }
+  ]
 });
