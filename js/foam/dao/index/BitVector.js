@@ -357,7 +357,7 @@ CLASS({
       model_: 'UnitTest',
       name: 'Full write',
       description: 'Write whole 64-bit vector',
-      code: multiline(function() {/*
+      code: function(ret) {
         var bv = X.lookup('foam.dao.index.BitVector').create();
         var numsIn = [0x0ABCDEF0 | 0, 0x12345678 | 0];
         bv.writeNumbers(0, 64, numsIn);
@@ -366,13 +366,13 @@ CLASS({
           this.assert(numsIn[i] === numsOut[i], 'Number should be ' +
               numsIn[i].toString(16) + ' and is ' + numsOut[i].toString(16));
         }
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'Write accross chunks',
       description: 'Write whole middle 32-bits of 64-bit vector',
-      code: multiline(function() {/*
+      code: function() {
         var bv = X.lookup('foam.dao.index.BitVector').create();
         var numsIn = [0x9ABCDEF9 | 0];
         bv.writeNumbers(16, 32, numsIn);
@@ -383,13 +383,13 @@ CLASS({
         this.assert(numsOut[1] === (numsIn[0] << 16), 'Number should be ' +
             (numsIn[0] << 16).toString(16) + ' and is ' +
             numsOut[1].toString(16));
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'Short writes',
       description: 'Write in small chunks',
-      code: multiline(function() {/*
+      code: function() {
         var bv = X.lookup('foam.dao.index.BitVector').create();
         // Deliberately include extra 1-valued bits to attempt to sabatoge
         // writes that should be masking most bits.
@@ -429,13 +429,13 @@ CLASS({
         this.assert(numsOut[1] === (0xAAAAAAA0 | 0), 'Number should be ' +
             (0xAAAAAAA0 | 0).toString(16) + ' and is ' +
             numsOut[1].toString(16));
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'Full small write',
       description: 'Write to small bitvector (whole vector)',
-      code: multiline(function() {/*
+      code: function() {
         var size = 11,
             bv = X.lookup('foam.dao.index.BitVector').create({ numBits: size }),
             numsIn = [(0xFFFFFFFF | 0)],
@@ -446,13 +446,13 @@ CLASS({
 
         this.assert(numsOut[0] === expected, 'Number should be ' + expected +
             ' and is ' + numsOut[0]);
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'Partial small write',
       description: 'Write to a small bitvector (internal piece of vector)',
-      code: multiline(function() {/*
+      code: function() {
         var size = 11,
             bv = X.lookup('foam.dao.index.BitVector').create({ numBits: size }),
             numsIn = [(0xAFFFFFFF | 0)], // MSBs: 1010 11... Ensures 1 in write
@@ -465,13 +465,13 @@ CLASS({
 
         this.assert(numsOut[0] === expected, 'Number should be ' + expected +
             ' and is ' + numsOut[0]);
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'Full large write',
       description: 'Write to large bitvector (whole vector)',
-      code: multiline(function() {/*
+      code: function() {
         var bv = X.lookup('foam.dao.index.BitVector').create({ numBits: 111 }),
             numsIn = [
               (0xFFFFFFFF | 0),
@@ -492,13 +492,13 @@ CLASS({
           this.assert(numsOut[i] === expected[i], 'Number should be ' +
               expected[i] + ' and is ' + numsOut[i]);
         }
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'Partial large write',
       description: 'Write to large bitvector (internal piece of vector)',
-      code: multiline(function() {/*
+      code: function() {
         var bv = X.lookup('foam.dao.index.BitVector').create({ numBits: 111 }),
             numsIn = [
               (0xAAAAAAAA | 0),
@@ -519,13 +519,13 @@ CLASS({
           this.assert(numsOut[i] === expected[i], 'Number should be ' +
               expected[i] + ' and is ' + numsOut[i]);
         }
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'String write',
       description: 'Write string (16-bit chunks)',
-      code: multiline(function() {/*
+      code: function() {
         var strIn = 'Hello world!!',
             size = strIn.length * 16,
             bv = X.lookup('foam.dao.index.BitVector').create({ numBits: size }),
@@ -534,13 +534,13 @@ CLASS({
         var strOut = bv.readString(0, size);
         this.assert(strOut === expected, 'String should be "' + expected +
             '" and is "' + strOut + '"');
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'Substring read',
       description: 'Read back part of string written to bitvector',
-      code: multiline(function() {/*
+      code: function() {
         var strIn = 'Hello world!!',
             size = strIn.length * 16,
             bv = X.lookup('foam.dao.index.BitVector').create({ numBits: size }),
@@ -549,13 +549,13 @@ CLASS({
         var strOut = bv.readString(6 * 16, 5 * 16);
         this.assert(strOut === expected, 'Substring should be "' + expected +
             '" and is "' + strOut + '"');
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'Offset write',
       description: 'Write to bitvector at some offset',
-      code: multiline(function() {/*
+      code: function() {
         var offset = 2,
             strIn = 'Hello world!!',
             bitLen = strIn.length * 16,
@@ -566,7 +566,7 @@ CLASS({
         var strOut = bv.readString(offset, bitLen);
         this.assert(strOut === expected, 'String should be "' + expected +
             '" and is "' + strOut + '"');
-      */})
+      }
     }
   ]
 });
