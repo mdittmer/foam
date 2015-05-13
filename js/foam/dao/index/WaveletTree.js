@@ -56,7 +56,7 @@ CLASS({
       return map;
     },
     function buildTree_(str, start, end, alphabet) {
-      if ( end - start <= 2 ) return this.buildLeaf_(str);
+      if ( end - start <= 2 ) return this.buildLeaf_(str); // TODO(markdittmer): Implement this.
 
       var mid = start + Math.floor((end - start) / 2);
       var left = '';
@@ -83,7 +83,7 @@ CLASS({
       var bitVector = this.BitVector.create({ numBits: str.length });
       bitVector.writeNumbers(nums);
       var rrr = this.RRR.create();
-      rrr.fromBitVector(bitVector); // TODO(markdittmer): Implement this.
+      rrr.fromBitVector(bitVector);
 
       // TODO(markdittmer): Model wavelet tree nodes.
       return {
