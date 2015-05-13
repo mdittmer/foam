@@ -95,7 +95,7 @@ CLASS({
       model_: 'UnitTest',
       name: '1/8',
       description: 'Compute 1-bit set bit in 8-bit block',
-      code: multiline(function() {/*
+      code: function() {
         // Store and check 00000001, 00000010, ..., 10000000.
         var bg = X.lookup('foam.dao.index.BlockGenerator').create();
         var arr = bg.generateBlocks(1, 8);
@@ -105,13 +105,13 @@ CLASS({
           this.assert(chunk === expected, 'Chunk should be ' +
               expected + ' and is ' + chunk);
         }
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: '7/8',
       description: 'Compute 7-bit set bit in 8-bit block',
-      code: multiline(function() {/*
+      code: function() {
         // Store and check 01111111, 10111111, ..., 11111110.
         var bg = X.lookup('foam.dao.index.BlockGenerator').create();
         var arr = bg.generateBlocks(7, 8);
@@ -122,13 +122,13 @@ CLASS({
           this.assert(chunk === expected, 'Chunk should be ' +
               expected + ' and is ' + chunk);
         }
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: '2/8',
       description: 'Compute 2-bit set bit in 8-bit block',
-      code: multiline(function() {/*
+      code: function() {
         // Store and check 00000011, 00000101, ..., 11000000.
         var bg = X.lookup('foam.dao.index.BlockGenerator').create();
         var arr = bg.generateBlocks(2, 8);
@@ -166,13 +166,13 @@ CLASS({
           this.assert(arr[i] === expected[i], 'Chunk should be ' +
               expected[i] + ' and is ' + arr[i]);
         }
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: '1/11',
       description: 'Compute 1-bit set bit in 11-bit block',
-      code: multiline(function() {/*
+      code: function() {
         // Store and check 00000000001, 00000000010, ..., 10000000000.
         var bg = X.lookup('foam.dao.index.BlockGenerator').create();
         var arr = bg.generateBlocks(1, 11);
@@ -182,13 +182,13 @@ CLASS({
           this.assert(chunk === expected, 'Chunk should be ' +
               expected + ' and is ' + chunk);
         }
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'Factorial memoization',
       description: 'Confirm that factorial results are memoized.',
-      code: multiline(function() {/*
+      code: function() {
         var bg = X.lookup('foam.dao.index.BlockGenerator').create();
         var t0 = GLOBAL.performance.now();
         var fact1 = bg.factorial(100);
@@ -197,13 +197,13 @@ CLASS({
         var t2 = GLOBAL.performance.now();
         this.assert((t1 - t0) >= (t2 - t1), 'Factorial: Expected memoization ' +
             'to result in improved performance');
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'Binomial memoization',
       description: 'Confirm that binomial results are memoized.',
-      code: multiline(function() {/*
+      code: function() {
         var bg = X.lookup('foam.dao.index.BlockGenerator').create();
         var t0 = GLOBAL.performance.now();
         var bin1 = bg.binomial(27, 19);
@@ -212,13 +212,13 @@ CLASS({
         var t2 = GLOBAL.performance.now();
         this.assert((t1 - t0) >= (t2 - t1), 'Binomial: Expected memoization ' +
             'to result in improved performance');
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'Block memoization',
       description: 'Confirm that generateBlocks results are memoized',
-      code: multiline(function() {/*
+      code: function() {
         var bg = X.lookup('foam.dao.index.BlockGenerator').create();
         var t0 = GLOBAL.performance.now();
         var arr1 = bg.generateBlocks(9, 19);
@@ -227,19 +227,19 @@ CLASS({
         var t2 = GLOBAL.performance.now();
         this.assert((t1 - t0) >= (t2 - t1), 'generateBlocks: Expected ' +
             'to result in improved performance');
-      */})
+      }
     },
     {
       model_: 'UnitTest',
       name: 'Block identity',
       description: 'Confirm that repeated generateBlocks returns same object',
-      code: multiline(function() {/*
+      code: function() {
         var bg = X.lookup('foam.dao.index.BlockGenerator').create();
         var arr1 = bg.generateBlocks(7, 9);
         var arr2 = bg.generateBlocks(7, 9);
         this.assert(arr1 === arr2, 'generateBlocks: Expected ' +
             'repeated call to return same object');
-      */})
+      }
     }
   ]
 });
