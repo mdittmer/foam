@@ -20,6 +20,7 @@ CLASS({
     'foam.dao.index.PopCountMapGenerator'
   ],
   imports: [
+    'console',
     'blockGenerator',
     'popCountMapGenerator'
   ],
@@ -170,6 +171,46 @@ CLASS({
       }
 
       return rank;
+    },
+    bitValue: function(idx) {
+      // Return of -1 signals bit idx is out of range.
+      if ( idx < 0 ) return -1;
+
+      var ttlSuperBlockSize = this.blockSize * this.superBlockSize;
+      var superBlockIdx = Math.min(Math.floor(idx / ttlSuperBlockSize),
+                                   this.superBlockRanks_.length - 1);
+      var superBlockOffset = this.superBlockOffsets_[superBlockIdx];
+      var bvOffset = superBlockOffset;
+      var numBlockBits = (idx + 1) - (superBlockIdx * ttlSuperBlockSize);
+      var numBlocks = Math.ceil(numBlockBits / this.blockSize);
+      for ( var i = 0; i < numBlocks; ++i ) {
+        // Read class (popCount) and offset from bit vector.
+        var popCount = this.bitVector_.readNumbers(
+            bvOffset, this.classSize)[0] >>> (32 - this.classSize);
+        bvOffset += this.classSize;
+        var offsetSize = this.computeOffsetSize_(popCount);
+        var offset = this.bitVector_.readNumbers(
+            bvOffset, offsetSize)[0] >>> (32 - offsetSize);
+        bvOffset += offsetSize;
+
+        // Only need to do value lookup in last block.
+        if ( i === numBlocks - 1 ) {
+          // Lookup block value in block array.
+          var blockValue = this.blockGenerator.generateBlocks(
+              popCount, this.blockSize)[offset];
+          var bitIdx = idx - ((superBlockIdx * ttlSuperBlockSize) +
+              (i * this.blockSize));
+          // TODO(markdittmer): Remove assertion once we are confident that this
+          // is always correct.
+          this.console.assert(bitIdx >= 0 && bitIdx < this.blockSize, 'Bit ' +
+              'index out of range: Should be within [0, ' + this.blockSize +
+              ') and is ' + bitIdx);
+          return (blockValue >>> (this.blockSize - bitIdx - 1)) & 0x01;
+        }
+      }
+
+      // Return of -1 signals bit idx is out of range.
+      return -1;
     },
     computeOffsetSizes_: function(values) {
       var offsetSizes = new Array(values.length);
@@ -379,6 +420,27 @@ CLASS({
           var rank = rrr.rank(i);
           this.assert(rank === expected[i], 'Expected rank(' + i + ') to be ' +
               expected[i] + ' and is ' + rank);
+        }
+      }
+    },
+    {
+      model_: 'UnitTest',
+      name: 'Bit value',
+      description: 'Test bitValue(idx) interface',
+      code: function() {
+        var bv = X.lookup('foam.dao.index.BitVector').create({ numBits: 10 });
+
+        var rrr = X.lookup('foam.dao.index.RRR').create({ blockSize: 5, superBlockSize: 1 });
+        // Write ten MSB-aligned bits: 00101 10000.
+        bv.writeNumbers(0, 10, [(0x05 << (32 - 5)) | (0x10 << (32 - 10))]);
+        rrr.fromBitVector(bv);
+
+        var expected = [0, 0, 1, 0, 1, 1, 0, 0, 0, 0];
+        for ( var i = 0; i < expected.length; ++i ) {
+          if ( i === 0 ) debugger;
+          var bitValue = rrr.bitValue(i);
+          this.assert(bitValue === expected[i], 'Expected bitValue(' + i +
+              ') to be ' + expected[i] + ' and is ' + bitValue);
         }
       }
     }
