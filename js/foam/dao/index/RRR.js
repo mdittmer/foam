@@ -105,9 +105,10 @@ CLASS({
           (this.blockSize * this.superBlockSize)));
       superBlockRanks[0] = 0;
       var rankCounter = 0;
-      for ( var i = 0; i < bitVector.numBits; i += this.blockSize ) {
+      for ( var i = 0; (i * this.blockSize) < bitVector.numBits; ++i ) {
         // Read block and LSB-align it.
-        var blockValue = bitVector.readNumbers(i, this.blockSize)[0] >>>
+        var blockValue = bitVector.readNumbers(
+            i * this.blockSize, this.blockSize)[0] >>>
             (32 - this.blockSize);
         var popCount = this.popCountMap_[blockValue].popCount;
         var offset = this.popCountMap_[blockValue].offset;
@@ -130,6 +131,8 @@ CLASS({
       this.bitVector_ = this.constructBitVector_(values, offsetSizes);
     },
     rank: function(idx) {
+      if ( idx < 0 ) return 0;
+
       var ttlSuperBlockSize = this.blockSize * this.superBlockSize;
       var superBlockIdx = Math.min(Math.floor(idx / ttlSuperBlockSize),
                                    this.superBlockRanks_.length - 1);
@@ -137,9 +140,7 @@ CLASS({
       var superBlockOffset = this.superBlockOffsets_[superBlockIdx];
       var bvOffset = superBlockOffset;
       var numBlockBits = (idx + 1) - (superBlockIdx * ttlSuperBlockSize);
-      var numBlocks = Math.min(Math.ceil(numBlockBits / ttlSuperBlockSize),
-                               this.superBlockSize);
-      if ( idx === 100 ) debugger;
+      var numBlocks = Math.ceil(numBlockBits / this.blockSize);
       for ( var i = 0; i < numBlocks; ++i ) {
         // Read class (popCount) and offset from bit vector.
         var popCount = this.bitVector_.readNumbers(
@@ -156,14 +157,16 @@ CLASS({
         // Lookup total pop count in pop count map.
         var blockPopCounts = this.popCountMap_[blockValue].popCounts;
         // If bit index is somewhere within this block, then the last bit's
-        // index is: idx - (superBlockOffset + (i * this.blockSize)).
+        // index is:
+        // idx - ((superBlockIdx * ttlSuperBlockSize) + (i * this.blockSize)).
         // Otherwise, the above value is greater than this.blockSize - 1;
         // default to that value (which is the rank of the whole block).
-        var blockIdx = Math.min(idx - (superBlockOffset + (i * this.blockSize)),
-                                this.blockSize - 1);
+        var blockIdx = Math.min(idx -
+            ((superBlockIdx * ttlSuperBlockSize) +
+            (i * this.blockSize)), this.blockSize - 1);
         var blockRank = blockPopCounts[blockIdx];
 
-          rank += blockRank;
+        rank += blockRank;
       }
 
       return rank;
@@ -222,6 +225,7 @@ CLASS({
         // MSB-align offset before writing to bit vector.
         bitVector.writeNumbers(bitVectorOffset, offsetSizes[i],
                                [offset << (32 - offsetSizes[i])]);
+        bitVectorOffset += offsetSizes[i];
       }
 
       return bitVector;
@@ -276,6 +280,101 @@ CLASS({
             'of ' + expectedValue + ' and is ' + rrrBitVectorValue);
 
         var expected = [0, 0, 1, 1, 2];
+        for ( var i = 0; i < expected.length; ++i ) {
+          var rank = rrr.rank(i);
+          this.assert(rank === expected[i], 'Expected rank(' + i + ') to be ' +
+              expected[i] + ' and is ' + rank);
+        }
+      }
+    },
+    {
+      model_: 'UnitTest',
+      name: 'Oversized rank index',
+      description: 'Check behaviour for passing an index to rank that is ' +
+          'larger than the bit vector',
+      code: function() {
+        var bv = X.lookup('foam.dao.index.BitVector').create({ numBits: 5 });
+        // Write five MSB-aligned bits: 00101.
+        bv.writeNumbers(0, 5, [0x05 << (32 - 5)]);
+
+        var rrr = X.lookup('foam.dao.index.RRR').create({ blockSize: 5, superBlockSize: 1 });
+        rrr.fromBitVector(bv);
+
+        // Rank of index passed end of bits is total rank; in this case, 2.
+        var rank = rrr.rank(1000);
+        this.assert(rank === 2, 'Expected rank(1000) to be 2 and is ' + rank);
+      }
+    },
+    {
+      model_: 'UnitTest',
+      name: 'Undersized rank index',
+      description: 'Check behaviour for  passing an index to rank that is ' +
+          'less than 0',
+      code: function() {
+        var bv = X.lookup('foam.dao.index.BitVector').create({ numBits: 5 });
+        // Write five MSB-aligned bits: 00101.
+        bv.writeNumbers(0, 5, [0x05 << (32 - 5)]);
+
+        var rrr = X.lookup('foam.dao.index.RRR').create({ blockSize: 5, superBlockSize: 1 });
+        rrr.fromBitVector(bv);
+
+        // Rank of index less than 0 is always 0.
+        var rank = rrr.rank(-1);
+        this.assert(rank === 0, 'Expected rank(-1) to be 2 and is ' + rank);
+      }
+    },
+    {
+      model_: 'UnitTest',
+      name: 'Empty bit vector',
+      description: 'Test rank of nothing',
+      code: function() {
+        var bv = X.lookup('foam.dao.index.BitVector').create({ numBits: 0 });
+
+        var rrr = X.lookup('foam.dao.index.RRR').create({ blockSize: 5, superBlockSize: 1 });
+        rrr.fromBitVector(bv);
+
+        // Rank should always be 0.
+        var rank = rrr.rank(-1);
+        this.assert(rank === 0, 'Expected rank(-1) to be 0 and is ' + rank);
+        rank = rrr.rank(0);
+        this.assert(rank === 0, 'Expected rank(0) to be 0 and is ' + rank);
+        rank = rrr.rank(1000);
+        this.assert(rank === 0, 'Expected rank(1000) to be 0 and is ' + rank);
+      }
+    },
+    {
+      model_: 'UnitTest',
+      name: 'Multiple blocks',
+      description: 'Test data across multiple blocks',
+      code: function() {
+        var bv = X.lookup('foam.dao.index.BitVector').create({ numBits: 10 });
+
+        var rrr = X.lookup('foam.dao.index.RRR').create({ blockSize: 5, superBlockSize: 2 });
+        // Write ten MSB-aligned bits: 00101 01000.
+        bv.writeNumbers(0, 10, [(0x05 << (32 - 5)) | (0x08 << (32 - 10))]);
+        rrr.fromBitVector(bv);
+
+        var expected = [0, 0, 1, 1, 2, 2, 3, 3, 3, 3];
+        for ( var i = 0; i < expected.length; ++i ) {
+          var rank = rrr.rank(i);
+          this.assert(rank === expected[i], 'Expected rank(' + i + ') to be ' +
+              expected[i] + ' and is ' + rank);
+        }
+      }
+    },
+    {
+      model_: 'UnitTest',
+      name: 'Multiple super blocks',
+      description: 'Test data across multiple super blocks',
+      code: function() {
+        var bv = X.lookup('foam.dao.index.BitVector').create({ numBits: 10 });
+
+        var rrr = X.lookup('foam.dao.index.RRR').create({ blockSize: 5, superBlockSize: 1 });
+        // Write ten MSB-aligned bits: 00101 10000.
+        bv.writeNumbers(0, 10, [(0x05 << (32 - 5)) | (0x10 << (32 - 10))]);
+        rrr.fromBitVector(bv);
+
+        var expected = [0, 0, 1, 1, 2, 3, 3, 3, 3, 3];
         for ( var i = 0; i < expected.length; ++i ) {
           var rank = rrr.rank(i);
           this.assert(rank === expected[i], 'Expected rank(' + i + ') to be ' +
