@@ -15,16 +15,19 @@ CLASS({
 
   requires: [
     'foam.Memo',
+    'foam.dao.index.BinarySearch',
     'foam.dao.index.BitVector',
     'foam.dao.index.BlockGenerator',
     'foam.dao.index.PopCountMapGenerator'
   ],
   imports: [
-    'console',
+    'binarySearch',
     'blockGenerator',
+    'console',
     'popCountMapGenerator'
   ],
   exports: [
+    'binarySearch',
     'blockGenerator',
     'popCountMapGenerator'
   ],
@@ -42,6 +45,13 @@ CLASS({
       type: 'foam.dao.index.PopCountMapGenerator',
       lazyFactory: function() {
         return this.PopCountMapGenerator.create();
+      }
+    },
+    {
+      name: 'binarySearch',
+      type: 'foam.dao.index.BinarySearch',
+      lazyFactory: function() {
+        return this.BinarySearch.create();
       }
     },
     {
@@ -131,7 +141,77 @@ CLASS({
       this.superBlockOffsets_ = this.computeSuperBlockOffsets_(offsetSizes);
       this.bitVector_ = this.constructBitVector_(values, offsetSizes);
     },
-    rank: function(idx) {
+    select0: function(idx) { return this.select_(0, idx); },
+    select1: function(idx) { return this.select_(1, idx); },
+    select_: function(bit, idx) {
+      if ( idx <= 0 ) return -1;
+
+      this.binarySearch.data = this.superBlockRanks_;
+      // Select comparator according to bit.
+      this.binarySearch.comparator = bit !== 0 ?
+          this.selectSuperBlockComparator1_ :
+          this.selectSuperBlockComparator0_;
+      var superBlockIdx = this.binarySearch.find(idx);
+
+      var rank = bit !== 0 ?
+          this.superBlockRank1_(superBlockIdx) :
+          this.superBlockRank0_(superBlockIdx);
+      var bvOffset = this.superBlockOffsets_[superBlockIdx];
+      var blockCount = 0;
+      while ( rank !== idx ) {
+        // If we reach the end of the bitVector, then there is no idx'th bit.
+        if ( bvOffset >= this.bitVector_.numBits ) return -1;
+
+        var data = this.readBlock_(bvOffset);
+        var popCount1 = data.popCount;
+        // Adjust popCount according to bit.
+        var popCount = bit !== 0 ? popCount1 :
+            ((blockCount + 1) * this.blockSize) - popCount1;
+        var offset = data.offset;
+        bvOffset = data.bvOffset;
+
+        // If this block doesn't contain desired bit, then continue to next
+        // block.
+        if ( rank + popCount < idx ) {
+          rank += popCount;
+          ++blockCount;
+          continue;
+        }
+
+        // Lookup block value in block array.
+        var blockValue = this.blockGenerator.generateBlocks(
+            popCount1, this.blockSize)[offset];
+        var popCounts = this.popCountMap_[blockValue].popCounts;
+
+        // Binary search for appropriate bit in block.
+        this.binarySearch.data = popCounts;
+        // Select comparator according to bit.
+        this.binarySearch.comparator = bit !== 0 ?
+            this.selectBlockComparator1_ :
+            this.selectBlockComparator0_;
+        var blockBitIdx = this.binarySearch.find(idx - rank);
+        // Adjust rank according to bit.
+        var blockBitPopCount = bit !== 0 ? popCounts[blockBitIdx] :
+            blockBitIdx + 1 - popCounts[blockBitIdx];
+        rank += blockBitPopCount; //popCounts[blockBitIdx];
+
+        // TODO(markdittmer): Remove assertion once we are confident that this
+        // is always correct.
+        this.console.assert(rank === idx, 'Block iteration should have taken' +
+            'fast path, but did not');
+
+        return (superBlockIdx * this.blockSize * this.superBlockSize) +
+            (blockCount * this.blockSize) +
+            blockBitIdx;
+      }
+
+      return (superBlockIdx * this.blockSize * this.superBlockSize) +
+          (blockCount * this.blockSize);
+    },
+    rank0: function(idx) {
+      return idx + 1 - this.rank1(idx);
+    },
+    rank1: function(idx) {
       if ( idx < 0 ) return 0;
 
       var ttlSuperBlockSize = this.blockSize * this.superBlockSize;
@@ -143,14 +223,10 @@ CLASS({
       var numBlockBits = (idx + 1) - (superBlockIdx * ttlSuperBlockSize);
       var numBlocks = Math.ceil(numBlockBits / this.blockSize);
       for ( var i = 0; i < numBlocks; ++i ) {
-        // Read class (popCount) and offset from bit vector.
-        var popCount = this.bitVector_.readNumbers(
-            bvOffset, this.classSize)[0] >>> (32 - this.classSize);
-        bvOffset += this.classSize;
-        var offsetSize = this.computeOffsetSize_(popCount);
-        var offset = this.bitVector_.readNumbers(
-            bvOffset, offsetSize)[0] >>> (32 - offsetSize);
-        bvOffset += offsetSize;
+        var data = this.readBlock_(bvOffset);
+        var popCount = data.popCount;
+        var offset = data.offset;
+        bvOffset = data.bvOffset;
 
         // Lookup block value in block array.
         var blockValue = this.blockGenerator.generateBlocks(
@@ -184,14 +260,10 @@ CLASS({
       var numBlockBits = (idx + 1) - (superBlockIdx * ttlSuperBlockSize);
       var numBlocks = Math.ceil(numBlockBits / this.blockSize);
       for ( var i = 0; i < numBlocks; ++i ) {
-        // Read class (popCount) and offset from bit vector.
-        var popCount = this.bitVector_.readNumbers(
-            bvOffset, this.classSize)[0] >>> (32 - this.classSize);
-        bvOffset += this.classSize;
-        var offsetSize = this.computeOffsetSize_(popCount);
-        var offset = this.bitVector_.readNumbers(
-            bvOffset, offsetSize)[0] >>> (32 - offsetSize);
-        bvOffset += offsetSize;
+        var data = this.readBlock_(bvOffset);
+        var popCount = data.popCount;
+        var offset = data.offset;
+        bvOffset = data.bvOffset;
 
         // Only need to do value lookup in last block.
         if ( i === numBlocks - 1 ) {
@@ -211,6 +283,23 @@ CLASS({
 
       // Return of -1 signals bit idx is out of range.
       return -1;
+    },
+    readBlock_: function(bvOffset) {
+      // Read class (popCount) and offset from bit vector.
+      var popCount = this.bitVector_.readNumbers(
+          bvOffset, this.classSize)[0] >>> (32 - this.classSize);
+      bvOffset += this.classSize;
+      var offsetSize = this.computeOffsetSize_(popCount);
+      var offset = this.bitVector_.readNumbers(
+          bvOffset, offsetSize)[0] >>> (32 - offsetSize);
+      bvOffset += offsetSize;
+
+      return { popCount: popCount, offset: offset, bvOffset: bvOffset };
+    },
+    invertBlockPopCounts_: function(popCounts) {
+      return popCounts.map(function(pc, i) {
+        return i + 1 - pc;
+      }.bind(this));
     },
     computeOffsetSizes_: function(values) {
       var offsetSizes = new Array(values.length);
@@ -288,6 +377,70 @@ CLASS({
     }
   },
 
+  listeners: [
+    {
+      name: 'superBlockRank0_',
+      code: function(superBlockIdx) {
+        return (superBlockIdx * this.blockSize * this.superBlockSize) -
+            this.superBlockRank1_(superBlockIdx);
+      }
+    },
+    {
+      name: 'superBlockRank1_',
+      code: function(superBlockIdx) {
+        return this.superBlockRanks_[superBlockIdx];
+      }
+    },
+    {
+      name: 'selectSuperBlockComparator0_',
+      code: function(midValue_, searchValue, i, data) {
+        // midValue_ is number of 1s before ith super block. Compute number of 0s
+        // before ith super block.
+        var baseValue = i * this.blockSize * this.superBlockSize;
+        var midValue = baseValue - midValue_;
+        if ( midValue < searchValue && i === data.length - 1 ) return 0;
+        // Same as midValue_ adjustment, but for value just past mid.
+        var nextBaseValue = (i + 1) * this.blockSize * this.superBlockSize;
+        var nextValue = nextBaseValue - data[i + 1];
+        if ( midValue < searchValue && nextValue >= searchValue ) return 0;
+        if ( midValue >= searchValue ) return 1;
+        else                           return -1;
+      }
+    },
+    {
+      name: 'selectSuperBlockComparator1_',
+      code: function(midValue, searchValue, i, data) {
+        if ( midValue < searchValue && i === data.length - 1 ) return 0;
+        if ( midValue < searchValue && data[i + 1] >= searchValue ) return 0;
+        if ( midValue >= searchValue ) return 1;
+        else                           return -1;
+      }
+    },
+    {
+      name: 'selectBlockComparator0_',
+      code: function(midValue_, searchValue, i, data) {
+        // midValue_ is number of 1s up to and including the ith bit in the block.
+        // Compute number of 0s up to and including the ith bit in the block..
+        var midValue = i + 1 - midValue_;
+        if ( midValue === searchValue && i === 0 ) return 0;
+        // Same as midValue_ adjustment, but for value just before mid.
+        var prevValue = i - data[i - 1];
+        if ( midValue === searchValue && prevValue < searchValue ) return 0;
+        if ( midValue >= searchValue ) return 1;
+        else                           return -1;
+      }
+    },
+    {
+      name: 'selectBlockComparator1_',
+      code: function(midValue, searchValue, i, data) {
+        if ( midValue === searchValue &&
+            (i === 0 || data[i - 1] < searchValue) ) return 0;
+        if ( midValue >= searchValue ) return 1;
+        else                           return -1;
+      }
+    }
+  ],
+
   tests: [
     {
       model_: 'UnitTest',
@@ -322,8 +475,8 @@ CLASS({
 
         var expected = [0, 0, 1, 1, 2];
         for ( var i = 0; i < expected.length; ++i ) {
-          var rank = rrr.rank(i);
-          this.assert(rank === expected[i], 'Expected rank(' + i + ') to be ' +
+          var rank = rrr.rank1(i);
+          this.assert(rank === expected[i], 'Expected rank1(' + i + ') to be ' +
               expected[i] + ' and is ' + rank);
         }
       }
@@ -342,8 +495,8 @@ CLASS({
         rrr.fromBitVector(bv);
 
         // Rank of index passed end of bits is total rank; in this case, 2.
-        var rank = rrr.rank(1000);
-        this.assert(rank === 2, 'Expected rank(1000) to be 2 and is ' + rank);
+        var rank = rrr.rank1(1000);
+        this.assert(rank === 2, 'Expected rank1(1000) to be 2 and is ' + rank);
       }
     },
     {
@@ -360,8 +513,8 @@ CLASS({
         rrr.fromBitVector(bv);
 
         // Rank of index less than 0 is always 0.
-        var rank = rrr.rank(-1);
-        this.assert(rank === 0, 'Expected rank(-1) to be 2 and is ' + rank);
+        var rank = rrr.rank1(-1);
+        this.assert(rank === 0, 'Expected rank1(-1) to be 2 and is ' + rank);
       }
     },
     {
@@ -375,12 +528,12 @@ CLASS({
         rrr.fromBitVector(bv);
 
         // Rank should always be 0.
-        var rank = rrr.rank(-1);
-        this.assert(rank === 0, 'Expected rank(-1) to be 0 and is ' + rank);
-        rank = rrr.rank(0);
-        this.assert(rank === 0, 'Expected rank(0) to be 0 and is ' + rank);
-        rank = rrr.rank(1000);
-        this.assert(rank === 0, 'Expected rank(1000) to be 0 and is ' + rank);
+        var rank = rrr.rank1(-1);
+        this.assert(rank === 0, 'Expected rank1(-1) to be 0 and is ' + rank);
+        rank = rrr.rank1(0);
+        this.assert(rank === 0, 'Expected rank1(0) to be 0 and is ' + rank);
+        rank = rrr.rank1(1000);
+        this.assert(rank === 0, 'Expected rank1(1000) to be 0 and is ' + rank);
       }
     },
     {
@@ -397,8 +550,8 @@ CLASS({
 
         var expected = [0, 0, 1, 1, 2, 2, 3, 3, 3, 3];
         for ( var i = 0; i < expected.length; ++i ) {
-          var rank = rrr.rank(i);
-          this.assert(rank === expected[i], 'Expected rank(' + i + ') to be ' +
+          var rank = rrr.rank1(i);
+          this.assert(rank === expected[i], 'Expected rank1(' + i + ') to be ' +
               expected[i] + ' and is ' + rank);
         }
       }
@@ -417,8 +570,8 @@ CLASS({
 
         var expected = [0, 0, 1, 1, 2, 3, 3, 3, 3, 3];
         for ( var i = 0; i < expected.length; ++i ) {
-          var rank = rrr.rank(i);
-          this.assert(rank === expected[i], 'Expected rank(' + i + ') to be ' +
+          var rank = rrr.rank1(i);
+          this.assert(rank === expected[i], 'Expected rank1(' + i + ') to be ' +
               expected[i] + ' and is ' + rank);
         }
       }
@@ -437,11 +590,88 @@ CLASS({
 
         var expected = [0, 0, 1, 0, 1, 1, 0, 0, 0, 0];
         for ( var i = 0; i < expected.length; ++i ) {
-          if ( i === 0 ) debugger;
           var bitValue = rrr.bitValue(i);
           this.assert(bitValue === expected[i], 'Expected bitValue(' + i +
               ') to be ' + expected[i] + ' and is ' + bitValue);
         }
+      }
+    },
+    {
+      model_: 'UnitTest',
+      name: 'Select1',
+      description: 'Test select1(idx) interface',
+      code: function() {
+        var bv = X.lookup('foam.dao.index.BitVector').create({ numBits: 10 });
+
+        var rrr = X.lookup('foam.dao.index.RRR').create({ blockSize: 5, superBlockSize: 1 });
+        // Write ten MSB-aligned bits: 00101 10101.
+        bv.writeNumbers(0, 10, [(0x05 << (32 - 5)) | (0x15 << (32 - 10))]);
+        rrr.fromBitVector(bv);
+
+        var select;
+        select = rrr.select1(-1);
+        this.assert(select === -1, 'Expected select1(-1) to be -1 and is ' +
+            select);
+        select = rrr.select1(0);
+        this.assert(select === -1, 'Expected select1(0) to be -1 and is ' +
+            select);
+        select = rrr.select1(1);
+        this.assert(select === 2, 'Expected select1(1) to be 2 and is ' +
+            select);
+        select = rrr.select1(2);
+        this.assert(select === 4, 'Expected select1(2) to be 4 and is ' +
+            select);
+        select = rrr.select1(3);
+        this.assert(select === 5, 'Expected select1(3) to be 5 and is ' +
+            select);
+        select = rrr.select1(4);
+        this.assert(select === 7, 'Expected select1(4) to be 7 and is ' +
+            select);
+        select = rrr.select1(5);
+        this.assert(select === 9, 'Expected select1(5) to be 9 and is ' +
+            select);
+        select = rrr.select1(6);
+        this.assert(select === -1, 'Expected select1(6) to be -1 and is ' +
+            select);
+      }
+    },
+    {
+      model_: 'UnitTest',
+      name: 'Select0',
+      description: 'Test select0(idx) interface',
+      code: function() {
+        var bv = X.lookup('foam.dao.index.BitVector').create({ numBits: 10 });
+
+        var rrr = X.lookup('foam.dao.index.RRR').create({ blockSize: 5, superBlockSize: 1 });
+        // Write ten MSB-aligned bits: 00101 10101.
+        bv.writeNumbers(0, 10, [(0x05 << (32 - 5)) | (0x15 << (32 - 10))]);
+        rrr.fromBitVector(bv);
+
+        var select;
+        select = rrr.select0(-1);
+        this.assert(select === -1, 'Expected select0(-1) to be -1 and is ' +
+            select);
+        select = rrr.select0(0);
+        this.assert(select === -1, 'Expected select0(0) to be -1 and is ' +
+            select);
+        select = rrr.select0(1);
+        this.assert(select === 0, 'Expected select0(1) to be 2 and is ' +
+            select);
+        select = rrr.select0(2);
+        this.assert(select === 1, 'Expected select0(2) to be 4 and is ' +
+            select);
+        select = rrr.select0(3);
+        this.assert(select === 3, 'Expected select0(3) to be 5 and is ' +
+            select);
+        select = rrr.select0(4);
+        this.assert(select === 6, 'Expected select0(4) to be 7 and is ' +
+            select);
+        select = rrr.select0(5);
+        this.assert(select === 8, 'Expected select0(5) to be 9 and is ' +
+            select);
+        select = rrr.select0(6);
+        this.assert(select === -1, 'Expected select0(6) to be -1 and is ' +
+            select);
       }
     }
   ]

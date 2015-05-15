@@ -47,16 +47,18 @@ CLASS({
     function rank(ch, idx) {
       return this.rank_(idx, this.tree_, ch);
     },
+    function select(ch, idx) {
+      return this.select_(idx, this.tree_, ch);
+    },
     function rank_(idx, node, ch) {
       var rrr = node.rrr;
       var bitValue = rrr.bitValue(idx);
-      var bitRank = rrr.rank(idx);
       var chBitValue = this.chBitValue_(node, ch);
 
       // If character does not appear in string, then its rank is 0.
       if ( bitValue < 0 || chBitValue < 0 ) return 0;
 
-      var chBitRank = chBitValue === 1 ? bitRank : (idx + 1 - bitRank);
+      var chBitRank = chBitValue !== 0 ? rrr.rank1(idx) : rrr.rank0(idx);
 
       // TODO(markdittmer): We should have a more elegant way of checking
       // whether a node is a leaf.
@@ -64,6 +66,30 @@ CLASS({
 
       var nextNode = chBitValue === 0 ? node.left : node.right;
       return this.rank_(chBitRank - 1, nextNode, ch);
+    },
+    function select_(idx, node, ch) {
+      var rrr = node.rrr;
+      var bitValue = rrr.bitValue(idx);
+      var chBitValue = this.chBitValue_(node, ch);
+
+      // If character does not appear in string, then select location is -1.
+      if ( bitValue < 0 || chBitValue < 0 ) return -1;
+
+      var chBitSelect;
+
+      // TODO(markdittmer): We should have a more elegant way of checking
+      // whether a node is a leaf.
+      if ( ! node.left ) {
+        chBitSelect = chBitValue !== 0 ? rrr.select1(idx) :
+            rrr.select0(idx);
+        return chBitSelect;
+      }
+
+      var nextNode = chBitValue === 0 ? node.left : node.right;
+      var newIdx = this.select_(idx, nextNode, ch);
+      chBitSelect = chBitValue !== 0 ? rrr.select1(newIdx + 1) :
+          rrr.select0(newIdx + 1);
+      return chBitSelect;
     },
     function chBitValue_(node, ch) {
       if ( typeof this.alphabet_[ch] === 'undefined' ) return -1;
@@ -160,11 +186,10 @@ CLASS({
     },
     {
       model_: 'UnitTest',
-      name: 'Foobar',
+      name: 'Foobar rank',
       description: 'Check rank values on "foobar"',
       code: function() {
         var str = 'foobar';
-        debugger;
         var wt = X.lookup('foam.dao.index.WaveletTree').create({ data: str });
         var data = [
           // For each char in str, check (1) just before char, (2) char
@@ -189,10 +214,39 @@ CLASS({
           var ch = data[i].ch;
           var idx = data[i].idx;
           var expected = data[i].expected;
-          if ( i === 1 ) debugger;
           var rank = wt.rank(ch, idx);
           this.assert(rank === expected, 'Expected rank(' + ch + ', ' + idx +
               ') on "' + str + '" to be ' + expected + ' and is ' + rank);
+        }
+      }
+    },
+    {
+      model_: 'UnitTest',
+      name: 'Foobar select',
+      description: 'Check select values on "foobar"',
+      code: function() {
+        var str = 'foobar';
+        var wt = X.lookup('foam.dao.index.WaveletTree').create({ data: str });
+        var data = [
+          // For each char in str, check (1) just before char, (2) char
+          // locations, (3) last char.
+          { ch: 'f', idx: 1, expected: 0 },
+          { ch: 'o', idx: 1, expected: 1 },
+          { ch: 'o', idx: 2, expected: 2 },
+          { ch: 'b', idx: 1, expected: 3 },
+          { ch: 'a', idx: 1, expected: 4 },
+          { ch: 'r', idx: 1, expected: 5 },
+          { ch: 'z', idx: 1, expected: -1 }
+        ];
+        for ( var i = 0; i < data.length; ++i ) {
+          var ch = data[i].ch;
+          var idx = data[i].idx;
+          var expected = data[i].expected;
+          if ( i === 0 ) debugger;
+          var select = wt.select(ch, idx);
+          this.assert(select === expected, 'Expected select(' + ch + ', ' +
+              idx + ') on "' + str + '" to be ' + expected + ' and is ' +
+              select);
         }
       }
     }
