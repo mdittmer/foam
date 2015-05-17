@@ -35,7 +35,11 @@ CLASS({
       }
     },
     {
-      name: 'alphabet_'
+      name: 'alphaMap_'
+    },
+    {
+      model_: 'ArrayProperty',
+      name: 'alphaList_'
     },
     {
       name: 'tree_'
@@ -49,6 +53,9 @@ CLASS({
     },
     function select(ch, idx) {
       return this.select_(idx, this.tree_, ch);
+    },
+    function lookup(idx) {
+      return this.lookup_(idx, this.tree_);
     },
     function rank_(idx, node, ch) {
       var rrr = node.rrr;
@@ -69,7 +76,7 @@ CLASS({
     },
     function select_(idx, node, ch) {
       var rrr = node.rrr;
-      var bitValue = rrr.bitValue(idx);
+      var bitValue = rrr.bitValue(idx - 1);
       var chBitValue = this.chBitValue_(node, ch);
 
       // If character does not appear in string, then select location is -1.
@@ -91,14 +98,32 @@ CLASS({
           rrr.select0(newIdx + 1);
       return chBitSelect;
     },
-    function chBitValue_(node, ch) {
-      if ( typeof this.alphabet_[ch] === 'undefined' ) return -1;
+    function lookup_(idx, node) {
+      var rrr = node.rrr;
+      var bitValue = rrr.bitValue(idx);
 
-      return this.alphabet_[ch] > node.mid ? 1 : 0;
+      if ( bitValue < 0 ) return '';
+
+      // TODO(markdittmer): We should have a more elegant way of checking
+      // whether a node is a leaf.
+      if ( ! node.left ) {
+        return this.alphaList_[bitValue === 0 ? node.mid : node.mid + 1];
+      }
+
+      var nextIdx = (bitValue === 0 ? rrr.rank0(idx) : rrr.rank1(idx)) - 1;
+      var nextNode = bitValue === 0 ? node.left : node.right;
+      return this.lookup_(nextIdx, nextNode);
+    },
+    function chBitValue_(node, ch) {
+      if ( typeof this.alphaMap_[ch] === 'undefined' ) return -1;
+
+      return this.alphaMap_[ch] > node.mid ? 1 : 0;
     },
     function construct_() {
-      this.alphabet_ = this.buildAlphabet_();
-      this.tree_ = this.buildTree_(this.data, 0, this.alphabet_.length - 1);
+      var alphabet = this.buildAlphabet_();
+      this.alphaMap_ = alphabet.alphaMap;
+      this.alphaList_ = alphabet.alphaList;
+      this.tree_ = this.buildTree_(this.data, 0, this.alphaMap_.length - 1);
     },
     function buildAlphabet_() {
       var alphaMap = this.buildAlphaMap_();
@@ -107,7 +132,7 @@ CLASS({
         alphaMap[alphaList[i]] = i;
       }
       alphaMap.length = alphaList.length;
-      return alphaMap;
+      return { alphaMap: alphaMap, alphaList: alphaList };
     },
     function buildAlphaMap_() {
       var str = this.data;
@@ -130,7 +155,7 @@ CLASS({
           nums.push(num);
           num = 0;
         }
-        if ( this.alphabet_[str[i]] <= mid ) {
+        if ( this.alphaMap_[str[i]] <= mid ) {
           num = num << 1;
           // Do not bother building more strings when current node is a leaf.
           // TODO(markdittmer): Should we have two versions of this loop to
@@ -247,6 +272,33 @@ CLASS({
           this.assert(select === expected, 'Expected select(' + ch + ', ' +
               idx + ') on "' + str + '" to be ' + expected + ' and is ' +
               select);
+        }
+      }
+    },
+    {
+      model_: 'UnitTest',
+      name: 'Foobar lookup',
+      description: 'Check lookup values on "foobar"',
+      code: function() {
+        var str = 'foobar';
+        var wt = X.lookup('foam.dao.index.WaveletTree').create({ data: str });
+        var data = [
+          // For each char in str, check (1) just before char, (2) char
+          // locations, (3) last char.
+          { idx: 0, expected: 'f' },
+          { idx: 1, expected: 'o' },
+          { idx: 2, expected: 'o' },
+          { idx: 3, expected: 'b' },
+          { idx: 4, expected: 'a' },
+          { idx: 5, expected: 'r' },
+          { idx: 6, expected: '' }
+        ];
+        for ( var i = 0; i < data.length; ++i ) {
+          var idx = data[i].idx;
+          var expected = data[i].expected;
+          var lookup = wt.lookup(idx);
+          this.assert(lookup === expected, 'Expected lookup(' + idx + '), ' +
+              'on "' + str + '" to be ' + expected + ' and is ' + lookup);
         }
       }
     }

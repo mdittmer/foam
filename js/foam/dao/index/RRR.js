@@ -55,7 +55,10 @@ CLASS({
       }
     },
     {
-      name: 'data'
+      model_: 'IntProperty',
+      name: 'numBits',
+      documentation: 'Number of bits in total.',
+      units: 'bits'
     },
     {
       model_: 'IntProperty',
@@ -140,11 +143,12 @@ CLASS({
       var offsetSizes = this.computeOffsetSizes_(values);
       this.superBlockOffsets_ = this.computeSuperBlockOffsets_(offsetSizes);
       this.bitVector_ = this.constructBitVector_(values, offsetSizes);
+      this.numBits = bitVector.numBits;
     },
     select0: function(idx) { return this.select_(0, idx); },
     select1: function(idx) { return this.select_(1, idx); },
     select_: function(bit, idx) {
-      if ( idx <= 0 ) return -1;
+      if ( idx <= 0 || idx > this.numBits ) return -1;
 
       this.binarySearch.data = this.superBlockRanks_;
       // Select comparator according to bit.
@@ -250,7 +254,7 @@ CLASS({
     },
     bitValue: function(idx) {
       // Return of -1 signals bit idx is out of range.
-      if ( idx < 0 ) return -1;
+      if ( idx < 0 || idx >= this.numBits ) return -1;
 
       var ttlSuperBlockSize = this.blockSize * this.superBlockSize;
       var superBlockIdx = Math.min(Math.floor(idx / ttlSuperBlockSize),
