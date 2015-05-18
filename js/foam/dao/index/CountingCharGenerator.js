@@ -10,7 +10,7 @@
  */
 
 CLASS({
-  name: 'BWTCharGenerator',
+  name: 'CountingCharGenerator',
   package: 'foam.dao.index',
 
   properties: [
@@ -22,12 +22,23 @@ CLASS({
 
   methods: [
     {
-      name: 'generateChar',
+      name: 'generateIntChar',
       code: function(jsChar) {
         if ( ! this.charCounts[jsChar] ) this.charCounts[jsChar] = 0;
         this.console.assert(this.charCounts[jsChar] < (1 << 16),
                             'BWT character counter overflow');
         var rtn = (jsChar.charCodeAt(0) << 16) | this.charCounts[jsChar];
+        ++this.charCounts[jsChar];
+        return rtn;
+      }
+    },
+    {
+      name: 'generateDoubleChar',
+      code: function(jsChar) {
+        if ( ! this.charCounts[jsChar] ) this.charCounts[jsChar] = 0;
+        this.console.assert(this.charCounts[jsChar] < (1 << 16),
+                            'BWT character counter overflow');
+        var rtn = jsChar + String.fromCharCode(this.charCounts[jsChar]);
         ++this.charCounts[jsChar];
         return rtn;
       }

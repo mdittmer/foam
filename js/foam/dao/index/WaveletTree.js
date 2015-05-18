@@ -17,6 +17,7 @@ CLASS({
   ],
 
   requires: [
+    'foam.dao.index.Alphabet',
     'foam.dao.index.BitVector',
     'foam.dao.index.RRR'
   ],
@@ -30,16 +31,11 @@ CLASS({
     {
       model_: 'StringProperty',
       name: 'data',
-      postSet: function() {
-        this.construct_();
-      }
+      required: true
     },
     {
-      name: 'alphaMap_'
-    },
-    {
-      model_: 'ArrayProperty',
-      name: 'alphaList_'
+      type: 'foam.dao.index.Alphabet',
+      name: 'alphabet'
     },
     {
       name: 'tree_'
@@ -47,7 +43,10 @@ CLASS({
   ],
 
   methods: [
-    function init() { this.construct_(); },
+    function init() {
+      this.SUPER.apply(this, arguments);
+      this.construct_();
+    },
     function rank(ch, idx) {
       return this.rank_(idx, this.tree_, ch);
     },
@@ -107,7 +106,7 @@ CLASS({
       // TODO(markdittmer): We should have a more elegant way of checking
       // whether a node is a leaf.
       if ( ! node.left ) {
-        return this.alphaList_[bitValue === 0 ? node.mid : node.mid + 1];
+        return this.alphabet.lookup(bitValue === 0 ? node.mid : node.mid + 1);
       }
 
       var nextIdx = (bitValue === 0 ? rrr.rank0(idx) : rrr.rank1(idx)) - 1;
@@ -115,31 +114,15 @@ CLASS({
       return this.lookup_(nextIdx, nextNode);
     },
     function chBitValue_(node, ch) {
-      if ( typeof this.alphaMap_[ch] === 'undefined' ) return -1;
+      if ( typeof this.alphabet.indexOf(ch) === 'undefined' ) return -1;
 
-      return this.alphaMap_[ch] > node.mid ? 1 : 0;
+      return this.alphabet.indexOf(ch) > node.mid ? 1 : 0;
     },
     function construct_() {
-      var alphabet = this.buildAlphabet_();
-      this.alphaMap_ = alphabet.alphaMap;
-      this.alphaList_ = alphabet.alphaList;
-      this.tree_ = this.buildTree_(this.data, 0, this.alphaMap_.length - 1);
-    },
-    function buildAlphabet_() {
-      var alphaMap = this.buildAlphaMap_();
-      var alphaList = Object.keys(alphaMap).sort();
-      for ( var i = 0; i < alphaList.length; ++i ) {
-        alphaMap[alphaList[i]] = i;
-      }
-      alphaMap.length = alphaList.length;
-      return { alphaMap: alphaMap, alphaList: alphaList };
-    },
-    function buildAlphaMap_() {
-      var str = this.data;
-      var len = str.length;
-      var map = {};
-      for ( var i = 0; i < len; ++i ) { map[str[i]] = true; }
-      return map;
+      // TODO(markdittmer): We should allow this to be injected, and keep it
+      // only when data and alphabet were injected at the same time.
+      this.alphabet = this.Alphabet.create({ data: this.data });
+      this.tree_ = this.buildTree_(this.data, 0, this.alphabet.length - 1);
     },
     function buildTree_(str, start, end) {
       var isLeaf = (end - start) < 2;
@@ -155,7 +138,7 @@ CLASS({
           nums.push(num);
           num = 0;
         }
-        if ( this.alphaMap_[str[i]] <= mid ) {
+        if ( this.alphabet.indexOf(str[i]) <= mid ) {
           num = num << 1;
           // Do not bother building more strings when current node is a leaf.
           // TODO(markdittmer): Should we have two versions of this loop to
@@ -267,7 +250,6 @@ CLASS({
           var ch = data[i].ch;
           var idx = data[i].idx;
           var expected = data[i].expected;
-          if ( i === 0 ) debugger;
           var select = wt.select(ch, idx);
           this.assert(select === expected, 'Expected select(' + ch + ', ' +
               idx + ') on "' + str + '" to be ' + expected + ' and is ' +

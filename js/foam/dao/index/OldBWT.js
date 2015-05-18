@@ -21,7 +21,7 @@
 // wavelet tree that we need anyway here, and ditch the extra storage.
 
 CLASS({
-  name: 'BWT',
+  name: 'OldBWT',
   package: 'foam.dao.index',
 
   requires: [
