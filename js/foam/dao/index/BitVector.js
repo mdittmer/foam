@@ -309,8 +309,7 @@ CLASS({
 
         // Slow path: Do the largest write the buffer will allow; shift to
         // adjust to requested index, and to clip size to requested write size.
-        var writeNumBytes = (this.numBytes >= 4 ? 4 :
-            (this.numBytes >= 2 ? 2 : 1)),
+        var writeNumBytes = this.numBytes - viewByteOffset,
             writeNumBits = writeNumBytes * 8,
             maxWriteIdx = this.numBytes - writeNumBytes,
             writeByteOffset = (viewByteOffset < 0 ? 0 :
@@ -318,8 +317,18 @@ CLASS({
             viewByteOffset)),
             offsetBitDiff = Math.abs(writeByteOffset - viewByteOffset) * 8,
             clipChunkShift = numChunkBits - writeNumBits,
-            keepData = this.view['getUint' + writeNumBits](writeByteOffset),
             writeData = data;
+
+        // Special case: When we have 3 bytes available, cannot do single
+        // reads/writes.
+        var keepData;
+        if ( writeNumBytes !== 3 ) {
+          keepData = this.view['getUint' + writeNumBits](writeByteOffset);
+        } else {
+          keepData = (this.view.getUint16(writeByteOffset) << 8) |
+              this.view.getUint8(writeByteOffset + 2);
+        }
+
 
         this.console.assert(writeByteOffset !== viewByteOffset ||
             clipChunkShift !== 0, 'Bit vector write took slow path when it ' +
@@ -346,8 +355,19 @@ CLASS({
           // keeping of existing data required.
           keepData = 0;
         }
-        this.view['setUint' + writeNumBits](writeByteOffset,
-            keepData | writeData);
+
+        // Standard case: Single write of 1, 2, or 4 bytes.
+        if ( writeNumBytes !== 3 ) {
+          this.view['setUint' + writeNumBits](writeByteOffset,
+              keepData | writeData);
+          return;
+        }
+
+        // Special case: When we have 3 bytes available, cannot do single
+        // reads/writes.
+        var finalData = keepData | writeData;
+        this.view.setUint16(writeByteOffset, finalData >>> 8);
+        this.view.setUint8(writeByteOffset + 2, finalData);
       }
     }
   ],

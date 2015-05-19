@@ -140,10 +140,6 @@ CLASS({
       var num = 0;
       var i;
       for ( i = 0; i < str.length; ++i ) {
-        if ( (i + 1) % 32 === 0 ) {
-          nums.push(num);
-          num = 0;
-        }
         if ( this.alphabet.indexOf(str[i]) <= mid ) {
           num = num << 1;
           // Do not bother building more strings when current node is a leaf.
@@ -156,6 +152,10 @@ CLASS({
           // TODO(markdittmer): Should we have two versions of this loop to
           // avoid checking this on every iteration?
           if ( ! isLeaf ) right += str[i];
+        }
+        if ( (i + 1) % 32 === 0 ) {
+          nums.push(num);
+          num = 0;
         }
       }
       num = num << (32 - (i % 32));

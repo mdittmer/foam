@@ -170,7 +170,7 @@ CLASS({
         var popCount1 = data.popCount;
         // Adjust popCount according to bit.
         var popCount = bit !== 0 ? popCount1 :
-            ((blockCount + 1) * this.blockSize) - popCount1;
+            this.blockSize - popCount1;
         var offset = data.offset;
         bvOffset = data.bvOffset;
 
@@ -318,7 +318,7 @@ CLASS({
       // [blocks per super block] bits. It also contains a variable-length
       // offset computed later.
       var baseSize = this.classSize * this.superBlockSize;
-      var numSuperBlocks = Math.floor(offsetSizes.length / this.superBlockSize);
+      var numSuperBlocks = Math.ceil(offsetSizes.length / this.superBlockSize);
       var counter = 0;
       var superBlockOffsets = new Array(numSuperBlocks);
       superBlockOffsets[0] = 0;
