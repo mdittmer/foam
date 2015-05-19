@@ -80,9 +80,9 @@ CLASS({
       var idx = startIdx;
       var ch = succs.lookup(idx);
       for ( var i = length - 1; i >= 0; --i ) {
-        idx = preds.select(ch, succs.rank(ch, idx));
         ch = succs.lookup(idx);
         strArr[i] = ch;
+        idx = preds.select(ch, succs.rank(ch, idx));
       }
 
       return strArr.join('');
@@ -91,9 +91,9 @@ CLASS({
       if ( length <= 0 ) return '';
       var preds = this.bwtWaveletTree;
       var succs = this.sortedWaveletTree;
-      var str = preds.lookup(startIdx);
+      var str = '';
       var idx = startIdx;
-      for ( var i = 1; i < length; ++i ) {
+      for ( var i = 0; i < length; ++i ) {
         var ch = succs.lookup(idx);
         str += ch;
         // No need to do an extra rank + select on last iteration.
@@ -151,8 +151,8 @@ CLASS({
         var bwtc = X.lookup('foam.dao.index.BWTController').create({
           data: 'abracadabra'
         });
-        // BWT: [eos]drcraaaabba.
-        var expected = bwtc.bwtGenerator.eos + 'drcraaaabba';
+        // BWT: ard$rcaaaabb.
+        var expected = 'ard' + bwtc.bwtGenerator.eos + 'rcaaaabb';
         for ( var i = 0; i < expected.length; ++i ) {
           var read = bwtc.read(i, 1);
           this.assert(read === expected[i], 'Expected read(' + i + ', 1) to ' +
@@ -168,22 +168,23 @@ CLASS({
         var bwtc = X.lookup('foam.dao.index.BWTController').create({
           data: 'abracadabra'
         });
-        // String: abracadabra.
-        // BWT: [eos]drcraaaabba.
+        // String: abracadabra$.
+        // BWT:    ard$rcaaaabb.
+        // Sorted: $aaaaabbcdrr.
         var eos = bwtc.bwtGenerator.eos;
         var expected = [
-          eos + 'a',
+          'a' + eos,
+          'ra',
           'da',
+          eos + 'a',
           'ra',
           'ca',
-          'ra',
           'ab',
           'ab',
           'ac',
           'ad',
           'br',
-          'br',
-          'a' + eos
+          'br'
         ];
         for ( var i = 0; i < expected.length; ++i ) {
           var read = bwtc.read(i, 2);
@@ -200,22 +201,22 @@ CLASS({
         var bwtc = X.lookup('foam.dao.index.BWTController').create({
           data: 'abracadabra'
         });
-        // String: abracadabra.
-        // BWT: [eos]drcraaaabba.
+        // String: abracadabra$.
+        // BWT:    ard$rcaaaabb.
         var eos = bwtc.bwtGenerator.eos;
         var expected = [
-          eos + 'abra',
+          'a' + eos + 'abr',
+          'ra' + eos + 'ab',
           'dabra',
+          eos + 'abra',
           'racad',
           'cadab',
-          'ra' + eos + 'ab',
+          'abra'+ eos,
           'abrac',
-          'abra' + eos,
           'acada',
           'adabr',
-          'braca',
           'bra' + eos + 'a',
-          'a' + eos + 'abr'
+          'braca'
         ];
         for ( var i = 0; i < expected.length; ++i ) {
           var read = bwtc.read(i, 5);
@@ -232,9 +233,9 @@ CLASS({
         var bwtc = X.lookup('foam.dao.index.BWTController').create({
           data: 'abracadabra'
         });
-        // BWT: [eos]drcraaaabba. For each BWT char, we read the char that
-        // appears directly before it in the original string.
-        var expected = 'aabab' + bwtc.bwtGenerator.eos + 'drcaar';
+        // String: abracadabra$.
+        // BWT:    ard$rcaaaabb.
+        var expected = 'rbaabad' + bwtc.bwtGenerator.eos + 'rcaa';
         for ( var i = 0; i < expected.length; ++i ) {
           var read = bwtc.read(i, -1);
           this.assert(read === expected[i], 'Expected read(' + i + ', -1) to ' +
@@ -254,21 +255,22 @@ CLASS({
         str += bwtc.bwtGenerator.eos;
         var fwdLen = Math.floor(str.length / 2);
         var bwdLen = fwdLen - str.length;
-        // BWT: [eos]drcraaaabba.
+        // String: abracadabra$.
+        // BWT:    ard$rcaaaabb.
         var eos = bwtc.bwtGenerator.eos;
         var expected = [
-          eos + 'abracadabra',
+          'a' + eos + 'abracadabr',
+          'ra' + eos + 'abracadab',
           'dabra' + eos + 'abraca',
+          eos + 'abracadabra',
           'racadabra' + eos + 'ab',
           'cadabra' + eos + 'abra',
-          'ra' + eos + 'abracadab',
-          'abracadabra' + eos,
           'abra' + eos + 'abracad',
+          'abracadabra' + eos,
           'acadabra' + eos + 'abr',
           'adabra' + eos + 'abrac',
-          'bracadabra' + eos + 'a',
           'bra' + eos + 'abracada',
-          'a' + eos + 'abracadabr'
+          'bracadabra' + eos + 'a'
         ];
         for ( var i = 0; i < expected.length; ++i ) {
           var read1 = bwtc.read(i, fwdLen);

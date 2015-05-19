@@ -86,7 +86,7 @@ CLASS({
       this.SUPER.apply(this, arguments);
       this.construct_();
     },
-    function query(str) {
+    function queryBWTRange(str) {
       var s = 0;
       var e = this.bwtController.length - 1;
       var c = this.bwtController.sortedCharCounts;
@@ -101,6 +101,24 @@ CLASS({
 
       return { start: s, end: e };
     },
+      function querySnippets(str, opt_preLen, opt_postLen, opt_limit) {
+        if ( opt_limit <= 0 ) return [];
+
+        var preLen = opt_preLen === 0 ? opt_preLen : (opt_preLen || 10);
+        var postLen = opt_postLen === 0 ? opt_postLen : (opt_postLen || 10);
+        var range = this.queryBWTRange(str);
+        if ( ! range ) return [];
+
+        var limit = Math.min(range.end - range.start + 1, opt_limit || 10);
+        var snippets = new Array(limit);
+        for ( var i = 0; i < limit; ++i ) {
+          var idx = range.start + i;
+          snippets[i] = this.bwtController.read(idx, -preLen) +
+              this.bwtController.read(idx, postLen);
+        }
+
+        return snippets;
+    },
     function construct_() {
       this.bwtController = this.BWTController.create({ data: this.data });
       if ( ! this.keepData ) this.data = '';
@@ -110,18 +128,40 @@ CLASS({
   tests: [
     {
       model_: 'UnitTest',
-      name: 'Mississipi: Find "iss"',
-      description: 'Test FM-Index query of "iss" on "missisipi"',
+      name: 'Mississipi: Find BWT range: "iss"',
+      description: 'Test FM-Index BWT range query of "iss" on "missisipi"',
       code: function() {
         var str = 'mississippi';
         var fmi = X.lookup('foam.dao.index.FMIndex').create({
           data: str
         });
-        var result = fmi.query('iss');
+        var result = fmi.queryBWTRange('iss');
         this.assert(result && result.start === 3, 'Expected "iss" query in ' +
             '"mississippi" to result in start BWT index of 3');
         this.assert(result && result.end === 4, 'Expected "iss" query in ' +
             '"mississippi" to result in end BWT index of 4');
+      }
+    },
+    {
+      model_: 'UnitTest',
+      name: 'Mississipi: Find BWT range: "iss"',
+      description: 'Test FM-Index BWT range query of "iss" on "missisipi"',
+      code: function() {
+        var str = 'mississippi';
+        var fmi = X.lookup('foam.dao.index.FMIndex').create({
+          data: str
+        });
+        var result = fmi.querySnippets('iss', 1, 4);
+        this.assert(result.length === 2, 'Expected  "iss" query in ' +
+            '"mississippi" to yield two results and yileded' + result.length);
+        this.assert(result[0] === 'missi' || result[0] === 'sissi',
+                    'Expected  bracketed "iss" query results in '+
+                        '"mississippi" to yield "missi" or "sissi" and ' +
+                        'yielded "' + result[0] + '"');
+        this.assert(result[1] === 'missi' || result[1] === 'sissi',
+                    'Expected  bracketed "iss" query results in '+
+                        '"mississippi" to yield "missi" or "sissi" and ' +
+                        'yielded "' + result[1] + '"');
       }
     }
   ]
