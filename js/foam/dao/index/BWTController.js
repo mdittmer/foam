@@ -18,6 +18,9 @@ CLASS({
     'foam.dao.index.BWTGenerator',
     'foam.dao.index.WaveletTree'
   ],
+  imports: [
+    'alphabet'
+  ],
 
   properties: [
     {
@@ -26,9 +29,17 @@ CLASS({
       required: true
     },
     {
+      model_: 'IntProperty',
+      name: 'length'
+    },
+    {
       model_: 'BooleanProperty',
       name: 'keepData',
       defaultValue: false
+    },
+    {
+      type: 'foam.dao.index.Alphabet',
+      name: 'alphabet'
     },
     {
       type: 'foam.dao.index.BWTGenerator',
@@ -43,7 +54,10 @@ CLASS({
     },
     {
       type: 'foam.dao.index.WaveletTree',
-      name: 'sortedBWTWaveletTree'
+      name: 'sortedWaveletTree'
+    },
+    {
+      name: 'sortedCharCounts'
     }
   ],
 
@@ -56,10 +70,12 @@ CLASS({
       return length >= 0 ? this.readFwd_(startIdx, length) :
           this.readBwd_(startIdx, -length);
     },
+    function rank(ch, idx) { return this.bwtWaveletTree.rank(ch, idx); },
+    function select(ch, idx) { return this.bwtWaveletTree.select(ch, idx); },
     function readBwd_(startIdx, length) {
       if ( length <= 0 ) return '';
       var succs = this.bwtWaveletTree;
-      var preds = this.sortedBWTWaveletTree;
+      var preds = this.sortedWaveletTree;
       var strArr = new Array(length);
       var idx = startIdx;
       var ch = succs.lookup(idx);
@@ -74,7 +90,7 @@ CLASS({
     function readFwd_(startIdx, length) {
       if ( length <= 0 ) return '';
       var preds = this.bwtWaveletTree;
-      var succs = this.sortedBWTWaveletTree;
+      var succs = this.sortedWaveletTree;
       var str = preds.lookup(startIdx);
       var idx = startIdx;
       for ( var i = 1; i < length; ++i ) {
@@ -86,23 +102,47 @@ CLASS({
 
       return str;
     },
+    function reconstruct_() {
+      // Force alphabet reconstruction.
+      this.alphabet = '';
+      this.construct_();
+    },
     function construct_() {
       var str = this.data;
-      var alphabet = this.Alphabet.create({ data: str });
+      if ( str[str.length - 1] !== this.bwtGenerator.eos )
+        str += this.bwtGenerator.eos;
+      this.length = this.data.length;
+      if ( ! this.alphabet )
+        this.alphabet = this.Alphabet.create({ data: str });
+
       var bwt = this.bwtGenerator.generateBWT(str);
-      var sortedBWT = bwt.split('').sort().join('');
+      var sorted = bwt.split('').sort().join('');
       this.bwtWaveletTree = this.WaveletTree.create({
         data: bwt,
-        alphabet: alphabet });
-      this.sortedBWTWaveletTree = this.WaveletTree.create({
-        data: sortedBWT,
-        alphabet: alphabet
+        alphabet: this.alphabet
       });
+      this.sortedWaveletTree = this.WaveletTree.create({
+        data: sorted,
+        alphabet: this.alphabet
+      });
+
+      var sortedCharCounts = {};
+      for ( var i = 0; i < this.alphabet.length; ++i ) {
+        var ch = this.alphabet.lookup(i);
+        sortedCharCounts[ch] = this.sortedWaveletTree.select(ch, 1);
+      }
+      var eos = this.bwtGenerator.eos;
+      sortedCharCounts[eos] = this.sortedWaveletTree.select(eos, 1);
+      this.sortedCharCounts = sortedCharCounts;
+
       if ( ! this.keepData ) this.data = '';
     }
   ],
 
   tests: [
+    // TODO(markdittmer): These tests are for a generator with eos AFTER all
+    // other values. We have switched to BEFORE all other values. These tests
+    // need to be rewritten.
     {
       model_: 'UnitTest',
       name: 'Abracadabra: 1-char reads',

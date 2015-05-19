@@ -22,6 +22,7 @@ CLASS({
     'foam.dao.index.RRR'
   ],
   imports: [
+    'alphabet',
     'console'
   ],
   exports: [
@@ -93,6 +94,7 @@ CLASS({
 
       var nextNode = chBitValue === 0 ? node.left : node.right;
       var newIdx = this.select_(idx, nextNode, ch);
+      // TODO(markdittmer): This isn't quite right. We need to skip ahead more.
       chBitSelect = chBitValue !== 0 ? rrr.select1(newIdx + 1) :
           rrr.select0(newIdx + 1);
       return chBitSelect;
@@ -118,10 +120,14 @@ CLASS({
 
       return this.alphabet.indexOf(ch) > node.mid ? 1 : 0;
     },
+    function reconstruct_() {
+      // Force alphabet reconstruction.
+      this.alphabet = '';
+      this.construct_();
+    },
     function construct_() {
-      // TODO(markdittmer): We should allow this to be injected, and keep it
-      // only when data and alphabet were injected at the same time.
-      this.alphabet = this.Alphabet.create({ data: this.data });
+      if ( ! this.alphabet )
+        this.alphabet = this.Alphabet.create({ data: this.data });
       this.tree_ = this.buildTree_(this.data, 0, this.alphabet.length - 1);
     },
     function buildTree_(str, start, end) {

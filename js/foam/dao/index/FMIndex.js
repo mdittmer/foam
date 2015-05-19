@@ -14,106 +14,114 @@ CLASS({
   package: 'foam.dao.index',
 
   requires: [
+    'foam.dao.index.Alphabet',
+    'foam.dao.index.BinarySearch',
     'foam.dao.index.BlockGenerator',
-    'foam.dao.index.BWTCharGenerator',
-    'foam.dao.index.PopCountMapGenerator',
-    'foam.dao.index.RotatedStr'
+    'foam.dao.index.BWTController',
+    'foam.dao.index.PopCountMapGenerator'
   ],
   exports: [
+    'alphabet',
+    'binarySearch',
     'blockGenerator',
+    'eos',
     'popCountMapGenerator'
   ],
 
   properties: [
     {
-      name: 'blockGenerator',
+      type: 'foam.dao.index.BinarySearch',
+      name: 'binarySearch',
+      factory: function() {
+        return this.BinarySearch.create();
+      }
+    },
+    {
       type: 'foam.dao.index.BlockGenerator',
-      lazyFactory: function() {
+      name: 'blockGenerator',
+      factory: function() {
         return this.BlockGenerator.create();
       }
     },
     {
-      name: 'popCountMapGenerator',
       type: 'foam.dao.index.PopCountMapGenerator',
-      lazyFactory: function() {
+      name: 'popCountMapGenerator',
+      factory: function() {
         return this.PopCountMapGenerator.create();
       }
     },
     {
       model_: 'StringProperty',
-      name: 'data',
-      adapt: function(_, nu) {
-        if ( nu.charAt(nu.length - 1) !== this.eos ) return nu + this.eos;
-        else return nu;
-      },
-      postSet: function(old, nu) {
-        if ( old === nu ) return;
-        this.bwt = this.computeBWT_();
-      }
-    },
-    {
-      name: 'bwt'
+      name: 'eos',
+      defaultValue: '\0'
     },
     {
       model_: 'StringProperty',
-      name: 'eos',
-      defaultValue: String.fromCharCode(0x0000FFFF | 0)
+      name: 'data',
+      required: true
+    },
+    {
+      model_: 'BooleanProperty',
+      name: 'keepData',
+      defaultValue: false
+    },
+    {
+      type: 'foam.dao.index.Alphabet',
+      name: 'alphabet',
+      factory: function() {
+        var str = this.data;
+        if ( str[str.length - 1] !== this.eos )
+          str += this.eos;
+        return this.Alphabet.create({ data: str });
+      }
+    },
+    {
+      type: 'foam.dao.index.BWTController',
+      name: 'bwtController'
     }
   ],
 
-  methods: {
-    // TODO(markdittmer): This is now duplicate code. A modelled BWT component
-    // has been checked in but is not integrated here yet.
-    computeBWT_: function() {
-      var len = this.data.length;
-      var arr = new Array(len);
-      var i;
-      for ( i = 0; i < len; ++i ) {
-        arr[i] = this.RotatedStr.create({
-          data: this.data,
-          startPos: i,
-          mod: len
-        });
-      }
-      arr.sort(function(a, b) {
-        return a.compareTo(b);
-      });
-      // TODO(markdittmer): Model BWT; store mapping from bwt index to suffix
-      // array index. This will enable (sub)string reconstruction for queries.
-      var rtn = '';
-      for ( i = 0; i < len; ++i ) {
-        rtn += arr[i].charAt(len - 1);
-      }
-      return rtn;
+  methods: [
+    function init() {
+      this.SUPER.apply(this, arguments);
+      this.construct_();
     },
-    invertBWT_: function() {
-      var bwtCharGenerator = this.BWTCharGenerator.create();
-      var len = this.bwt.length;
-      var bwt = new Array(len);
-      var i;
-      for ( i = 0; i < len; ++i ) {
-        bwt[i] = bwtCharGenerator.generateChar(this.bwt[i]);
+    function query(str) {
+      var s = 0;
+      var e = this.bwtController.length - 1;
+      var c = this.bwtController.sortedCharCounts;
+      var rank = this.bwtController.rank.bind(this.bwtController);
+
+      for ( var i = str.length - 1; i >= 0; --i ) {
+        var ch = str[i];
+        s = c[ch] + rank(ch, s - 1);
+        e = c[ch] + rank(ch, e) - 1;
+        if ( e < s ) return null;
       }
-      var sortedBWT = bwt.slice(0);
-      sortedBWT.sort();
-      // TODO(markdittmer): Model inverted BWT.
-      var invertedBWT = new Array(len);
-      for ( i = 0; i < len; ++i ) {
-        invertedBWT[i] = [bwt[i], sortedBWT[i]];
-      }
-      return invertedBWT;
+
+      return { start: s, end: e };
+    },
+    function construct_() {
+      this.bwtController = this.BWTController.create({ data: this.data });
+      if ( ! this.keepData ) this.data = '';
     }
-  },
+  ],
 
   tests: [
     {
       model_: 'UnitTest',
-      name: 'Abracadabra',
-      description: 'Ta-da!',
+      name: 'Mississipi: Find "iss"',
+      description: 'Test FM-Index query of "iss" on "missisipi"',
       code: function() {
-        var fmi = X.lookup('foam.dao.index.FMIndex').create({ data: 'abracadabra' });
-        var bwt = fmi.bwt;
-        this.assert(bwt === (fmi.eos + 'drcraaaabba'), 'Expected magic to happen');
+        var str = 'mississippi';
+        var fmi = X.lookup('foam.dao.index.FMIndex').create({
+          data: str
+        });
+        var result = fmi.query('iss');
+        this.assert(result && result.start === 3, 'Expected "iss" query in ' +
+            '"mississippi" to result in start BWT index of 3');
+        this.assert(result && result.end === 4, 'Expected "iss" query in ' +
+            '"mississippi" to result in end BWT index of 4');
       }
     }
   ]

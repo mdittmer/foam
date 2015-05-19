@@ -16,12 +16,15 @@ CLASS({
   requires: [
     'foam.dao.index.RotatedStr'
   ],
+  imports: [
+    'eos'
+  ],
 
   properties: [
     {
       model_: 'StringProperty',
       name: 'eos',
-      defaultValue: String.fromCharCode(0x0000FFFF | 0)
+      defaultValue: '\0'
     }
   ],
 
@@ -57,7 +60,7 @@ CLASS({
       code: function() {
         var bwtg = X.lookup('foam.dao.index.BWTGenerator').create();
         var bwt = bwtg.generateBWT('abracadabra');
-        this.assert(bwt === (bwtg.eos + 'drcraaaabba'), 'Expected magic to happen');
+        this.assert(bwt === 'ard' + bwtg.eos + 'rcaaaabb', 'Expected magic to happen');
       }
     }
   ]
