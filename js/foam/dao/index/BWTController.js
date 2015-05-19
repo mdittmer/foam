@@ -38,6 +38,11 @@ CLASS({
       defaultValue: false
     },
     {
+      model_: 'BooleanProperty',
+      name: 'storeIndices',
+      defaultValue: false
+    },
+    {
       type: 'foam.dao.index.Alphabet',
       name: 'alphabet'
     },
@@ -58,6 +63,10 @@ CLASS({
     },
     {
       name: 'sortedCharCounts'
+    },
+    {
+      model_: 'ArrayProperty',
+      name: 'originalIndices'
     }
   ],
 
@@ -72,6 +81,12 @@ CLASS({
     },
     function rank(ch, idx) { return this.bwtWaveletTree.rank(ch, idx); },
     function select(ch, idx) { return this.bwtWaveletTree.select(ch, idx); },
+    function originalIndexOf(bwtIdx) {
+      if ( ! this.storeIndices ) throw new Error('Unable to lookup original ' +
+          'index of character when config parameter "storeIndices" is false');
+
+      return this.originalIndices[bwtIdx];
+    },
     function readBwd_(startIdx, length) {
       if ( length <= 0 ) return '';
       var succs = this.bwtWaveletTree;
@@ -115,7 +130,10 @@ CLASS({
       if ( ! this.alphabet )
         this.alphabet = this.Alphabet.create({ data: str });
 
-      var bwt = this.bwtGenerator.generateBWT(str);
+      var bwtData = this.bwtGenerator.generateBWT(str, this.storeIndices);
+      if ( this.storeIndices ) this.originalIndices = bwtData.indices;
+
+      var bwt = bwtData.str;
       var sorted = bwt.split('').sort().join('');
       this.bwtWaveletTree = this.WaveletTree.create({
         data: bwt,
@@ -140,9 +158,8 @@ CLASS({
   ],
 
   tests: [
-    // TODO(markdittmer): These tests are for a generator with eos AFTER all
-    // other values. We have switched to BEFORE all other values. These tests
-    // need to be rewritten.
+    // TODO(markdittmer): These tests need to be updated after read interface
+    // was changed to skip initial character.
     {
       model_: 'UnitTest',
       name: 'Abracadabra: 1-char reads',

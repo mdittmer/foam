@@ -29,7 +29,7 @@ CLASS({
   ],
 
   methods: [
-    function generateBWT(str) {
+    function generateBWT(str, opt_includeIndices) {
       if ( str[str.length - 1] !== this.eos ) str += this.eos;
       var len = str.length;
       var arr = new Array(len);
@@ -44,11 +44,17 @@ CLASS({
       arr.sort(function(a, b) {
         return a.compareTo(b);
       });
-      var rtn = '';
+      var bwtStr = '';
       for ( i = 0; i < len; ++i ) {
-        rtn += arr[i].charAt(len - 1);
+        bwtStr += arr[i].charAt(len - 1);
       }
-      return rtn;
+      var indices = opt_includeIndices ? new Array(str.length) : [];
+      if ( opt_includeIndices ) {
+        for ( i = 0; i < len; ++i ) {
+          indices[i] = arr[i].startPos;
+        }
+      }
+      return { str: bwtStr, indices: indices };
     }
   ],
 
