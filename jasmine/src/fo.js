@@ -30,20 +30,21 @@
   defDL0.doInstallOn = function defDL0_doInstallOn(X, config, deps) {
     var base = X.set(config.path, Object.create(config.prototype || X.dl0));
     base.installOn = function defDL0_installOnWrapper(X, o) {
-      return config.install.apply(this, [X, o].concat(deps));
+      return (config.install.code || config.install).apply(
+          this, [X, o].concat(deps));
     };
   };
   defDL0.installOn = function defDL0_installOn(X, o) {
     var defDL0DL = this;
-    o.defDL_ = [function defDL0(config, opt_X) {
-      var defX = opt_X || X;
+    o.defDL_ = [function defDL0(config) {
+      var defX = config.X || X;
       if (!config.path) throw new Error('Define DL without path');
       if (!config.install) throw new Error('Define DL without installer');
-      // TODO(markdittmer): Abstract this somewhere shared by defDLs.
-      return Promise.all(config.requires ?
-          config.requires.map(function defDL0_mapRequires(path) {
+      return Promise.all(config.installRequires ?
+          config.installRequires.map(function defDL0_mapRequires(path) {
             return defX.lookup(path);
-          }) : []).then(defDL0DL.doInstallOn.bind(defDL0DL, defX, config));
+          }) : []).then(defDL0DL.doInstallOn.bind(
+              defDL0DL, defX, config));
     }];
     o.defDL = function defDL(config, opt_X) {
       // TODO(markdittmer): Should these run in series instead of parallel?
@@ -79,41 +80,130 @@
   dlPromises.push(dl0.defDL({
     path: 'initializable',
     install: function initializable_installer(X, o) {
-      this.initializers_ = {};
-      this.installInitializer = function installInitializer(key, initializer) {
-        this.initializers_[key] = initializer;
+      o.initializers_ = [];
+      o.installInitializer = function installInitializer(
+          key, deps, initFn) {
+        var initializer = {
+          name: key,
+          deps: deps,
+          code: initFn,
+        };
+        var i, j, minI = 0, maxI = this.initializers_.length, firstDep, lastDep;
+        for (i = this.initializers_.length - 1; i >= 0; i--) {
+          if (this.initializers_[i].deps.indexOf(key) >= 0) {
+            maxI = i - 1;
+            firstDep = this.initializers_[i].name;
+          }
+        }
+        if (maxI === this.initializers_.length) {
+          this.initializers_.push(initializer);
+          return;
+        }
+        if (deps.length !== 0) {
+          for (i = 0; i < this.initializers_; i++) {
+            if (deps.indexOf(this.initializers_[i].name) >= 0) {
+              minI = i + 1;
+              lastDep = this.initializers_[i].name;
+            }
+          }
+        }
+        if (minI > maxI) {
+          throw new Error(
+              'Irreconcilable init dependencies:' +
+                  firstDep + ' depends on ' + key + ' but ' +
+                  key + ' depends on ' + lastDep);
+        }
+        this.initializers_.splice(maxI, 0, initializer);
       };
     },
   }));
   dlPromises.push(dl0.defDL({
     path: 'defDL1',
-    requires: ['defDL0', 'initializable'],
-    install: function defDL1_installer(X, o, defDL0, initializable) {
-      var defDL1DL = this;
-      // TODO(markdittmer): This should be defined once; not on every install.
-      defDL1DL.doInit = function defDL1_doInit(o, config, deps) {
-        o.installInitializer(function defDL1_initWrapper(value) {
-          config.init.apply(this, [value].concat(deps));
-        });
-      };
+    installRequires: ['defDL0', 'initializable'],
+    install: {
+      code: function defDL1_installer(X, o, defDL0, initializable) {
+        var defDL1DL = this;
+        // TODO(markdittmer): This should be defined once; not on every install.
+        defDL1DL.doInit = function defDL1_doInit(o, initConfig, deps) {
+          X.Object_forEach(
+              initConfig,
+              function defDL1_doInit_forEach(initializer, key) {
+                o.installInitializer(key, deps, initializer);
+              });
+        };
 
-      if (!o.defDL_) o.install(X, defDL0);
-      o.defDL_.push(function defDL1(config, opt_X) {
-        var defX = opt_X || X;
-        if (config.init) {
-          if (!o.installInitializer) o.install(X, initializable);
-          // TODO(markdittmer): Abstract this somewhere shared by defDLs.
-          Promise.all(config.requires ?
-              config.requires.map(function defDL1_mapRequires(path) {
-                return defX.lookup(path);
-              }) : []).then(defDL1DL.doInit.bind(defDL1DL, o, config));
-        }
-      });
+        if (!o.defDL_) o.install(X, defDL0);
+        o.defDL_.push(function defDL1(config) {
+          var defX = config.X || X;
+          if (config.init) {
+            if (!o.installInitializer) o.install(defX, initializable);
+            return Promise.resolve(
+                defDL1DL.doInit(o, config.init, config.initRequires || []));
+          }
+        });
+      },
     },
   }));
-  X.lookup('defDL1').then(function bootstrap_defDL1(defDL1) {
-    dl0.install(X, defDL1);
-    debugger;
+  Promise.all(dlPromises).then(function bootstrap_defDL1() {
+    dl0.install(X, X.defDL1);
+
+    dlPromises = [];
+
+    dlPromises.push(dl0.defDL({
+      path: 'context',
+      install: function context_installer(X, o) {
+        o.X_ = X;
+        o.X = o.Y = null;
+      },
+      init: {
+        X: function X_init(X) {
+          this.X = X;
+          this.Y = X.sub();
+        },
+      },
+    }));
+    // TODO(markdittmer): For extends and create:
+    // - Do we want extends_ and prototype_, or just use this?
+    dlPromises.push(dl0.defDL({
+      path: 'extends',
+      install: function extends_installer(X, o) {
+        var defaultPrototype = X.dl0 || null;
+        o.extends_ = defaultPrototype;
+        o.prototype_ = defaultPrototype;
+      },
+      initRequires: ['context'],
+      init: {
+        'extends': function extends_init(lookupPath, context) {
+          this.X.lookup(lookupPath).then(function setPrototype(base) {
+            this.extends_ = base;
+            this.prototype_ = (base.prototype_ || null);
+          }.bind(this));
+        },
+      },
+    }));
+    dlPromises.push(dl0.defDL({
+    path: 'create',
+    installRequires: ['initializable', 'extends'],
+    install: function create_installer(X, o, initializable, extends_) {
+      o.create = function create(args) {
+        if (!this.prototype_) this.install(X, extends_);
+        var creation = this.prototype_.extend(X);
+        if (!this.initializers_) this.install(X, initializable);
+        X.Object_forEach(args, function forEachCreateArg(arg, name) {
+          if (this.initializers_[name])
+            this.initializers_[name].code.call(this, arg);
+        }.bind(this));
+      };
+    },
+    }));
+
+    Promise.all(dlPromises).then(function test_Model() {
+      var Model = dl0.extend(X, X['extends']);
+
+      dlPromises = [];
+
+      debugger;
+    });
   });
 
   // dlPromises.push(dl0.defDL({
